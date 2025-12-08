@@ -1,5 +1,3 @@
-mod shared;
-
 use axum::{
     Router,
     extract::State,
@@ -17,7 +15,7 @@ use std::{
 use tokio::sync::mpsc::{self, UnboundedSender};
 use uuid::Uuid;
 
-use crate::shared::{GRID_H, GRID_W, Pos, SnakeMessage};
+use multisnake_shared::{GRID_H, GRID_W, Pos, SnakeMessage};
 
 // Helper inline to compute linear index
 #[inline]

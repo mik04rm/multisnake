@@ -1,5 +1,3 @@
-mod shared;
-
 use futures_util::{SinkExt, StreamExt};
 use macroquad::prelude::*;
 use std::{
@@ -18,7 +16,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io::stdout;
 
-use crate::shared::{GRID_H, GRID_W, MOVE_DELAY_SEC, Pos, SnakeMessage};
+use multisnake_shared::{GRID_H, GRID_W, MOVE_DELAY_SEC, Pos, SnakeMessage};
 
 static DARKRED: Color = Color::new(0.5, 0.0, 0.0, 1.0);
 
@@ -60,10 +58,14 @@ const CELL_SIZE: f32 = 20.0;
 const WINDOW_W: f32 = GRID_W as f32 * CELL_SIZE;
 const WINDOW_H: f32 = GRID_H as f32 * CELL_SIZE;
 
-impl Pos {
-    fn to_screen(&self) -> Vec2 {
-        vec2(self.x as f32 * CELL_SIZE, self.y as f32 * CELL_SIZE)
-    }
+// impl Pos {
+//     fn to_screen(&self) -> Vec2 {
+//         vec2(self.x as f32 * CELL_SIZE, self.y as f32 * CELL_SIZE)
+//     }
+// }
+
+fn pos_to_screen(p: &Pos) -> Vec2 {
+    vec2(p.x as f32 * CELL_SIZE, p.y as f32 * CELL_SIZE)
 }
 
 async fn show_end_screen() {
@@ -278,7 +280,7 @@ async fn main() {
         }
 
         for (i, s) in my_snake.iter().enumerate() {
-            let pos = s.to_screen();
+            let pos = pos_to_screen(s);
             draw_rectangle(
                 pos.x,
                 pos.y,
@@ -291,7 +293,7 @@ async fn main() {
         for (_, segments) in other_snakes.iter() {
             println!("Drawing other snake: {:?}", segments);
             for (i, seg) in segments.iter().enumerate() {
-                let pos = seg.to_screen();
+                let pos = pos_to_screen(seg);
                 let color = if i == 0 { RED } else { DARKRED };
                 draw_rectangle(pos.x, pos.y, CELL_SIZE, CELL_SIZE, color);
             }
