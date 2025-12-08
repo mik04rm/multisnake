@@ -2,10 +2,13 @@ mod shared;
 
 use futures_util::{SinkExt, StreamExt};
 use macroquad::prelude::*;
-use std::{collections::{HashMap, VecDeque}, hash::Hash, thread};
+use std::{
+    collections::{HashMap, VecDeque},
+    thread,
+};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use uuid::Uuid;
 
 use crossterm::{
     event::{self, Event},
@@ -15,7 +18,9 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io::stdout;
 
-use crate::shared::{GRID_H, GRID_W, Pos, SnakeMessage};
+use crate::shared::{GRID_H, GRID_W, MOVE_DELAY_SEC, Pos, SnakeMessage};
+
+static DARKRED: Color = Color::new(0.5, 0.0, 0.0, 1.0);
 
 pub fn spawn_tui() -> thread::JoinHandle<()> {
     thread::spawn(|| {
@@ -30,7 +35,7 @@ pub fn spawn_tui() -> thread::JoinHandle<()> {
         loop {
             terminal
                 .draw(|frame| {
-                    let size = frame.size();
+                    // let size = frame.size();
                     // draw something
                     // frame.render_widget(your_widget, size);
                 })
@@ -51,8 +56,7 @@ pub fn spawn_tui() -> thread::JoinHandle<()> {
     })
 }
 
-
-const CELL_SIZE: f32 = 28.0;
+const CELL_SIZE: f32 = 20.0;
 const WINDOW_W: f32 = GRID_W as f32 * CELL_SIZE;
 const WINDOW_H: f32 = GRID_H as f32 * CELL_SIZE;
 
@@ -62,15 +66,33 @@ impl Pos {
     }
 }
 
-#[macroquad::main("Snake + Tokio")]
+async fn show_end_screen() {
+    loop {
+        clear_background(BLACK);
+        let text = format!("Game finished!");
+        let font_size = 30;
+        let dimensions = measure_text(&text, None, font_size, 1.0);
+        draw_text(
+            &text,
+            (WINDOW_W - dimensions.width) / 2.0,
+            (WINDOW_H - dimensions.height) / 2.0,
+            font_size as f32,
+            WHITE,
+        );
+        next_frame().await;
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
-    let (from_client_tx, mut from_client_rx) = mpsc::unbounded_channel::<SnakeMessage>();
+    let (from_client_tx, mut from_client_rx) =
+        tokio::sync::mpsc::unbounded_channel::<SnakeMessage>();
     let (from_server_tx, from_server_rx) = std::sync::mpsc::channel::<SnakeMessage>();
 
     thread::spawn(move || {
-        let rt = Runtime::new().unwrap();
+        let tokio_runtime = Runtime::new().unwrap();
 
-        rt.block_on(async move {
+        tokio_runtime.block_on(async move {
             let url = "ws://127.0.0.1:8080";
             // info!("Connected to WebSocket server");
             let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
@@ -110,16 +132,18 @@ async fn main() {
     // TODO better error handling
 
     let mut my_snake: VecDeque<Pos>;
-    let mut other_snakes: HashMap<uuid::Uuid, VecDeque<Pos>> = HashMap::new();
-    let my_id: uuid::Uuid;
-
+    let mut other_snakes: HashMap<Uuid, VecDeque<Pos>> = HashMap::new();
+    let my_id: Uuid;
 
     println!("Waiting for initial message from server...");
     let msg = from_server_rx.recv().unwrap();
     println!("Received initial message from_server_rx: {:?}", msg);
 
     match msg {
-        SnakeMessage::InitSnake { segments, client_id } => {
+        SnakeMessage::InitSnake {
+            segments,
+            client_id,
+        } => {
             my_id = client_id;
             println!("Init snake from server: {:?}", segments);
             my_snake = segments;
@@ -133,12 +157,10 @@ async fn main() {
 
     // let _ = spawn_tui();
 
-    request_new_screen_size(WINDOW_W, WINDOW_H + 40.0);
     next_frame().await;
 
     let mut dir = (1, 0);
     let mut move_timer = 0.0;
-    let move_delay = 0.20;
 
     loop {
         let dt = get_frame_time();
@@ -160,7 +182,7 @@ async fn main() {
         }
 
         move_timer += dt;
-        if move_timer >= move_delay {
+        if move_timer >= MOVE_DELAY_SEC {
             move_timer = 0.0;
 
             let head = my_snake[0];
@@ -207,7 +229,10 @@ async fn main() {
                     }
                 }
 
-                SnakeMessage::InitSnakeResponse { client_id, segments } => {
+                SnakeMessage::InitSnakeResponse {
+                    client_id,
+                    segments,
+                } => {
                     other_snakes.insert(client_id, segments);
                 }
 
@@ -265,13 +290,25 @@ async fn main() {
 
         for (_, segments) in other_snakes.iter() {
             println!("Drawing other snake: {:?}", segments);
-            for (_, seg) in segments.iter().enumerate() {
+            for (i, seg) in segments.iter().enumerate() {
                 let pos = seg.to_screen();
-                let color = RED;
+                let color = if i == 0 { RED } else { DARKRED };
                 draw_rectangle(pos.x, pos.y, CELL_SIZE, CELL_SIZE, color);
             }
         }
 
         next_frame().await;
+    }
+
+    show_end_screen().await;
+}
+
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "500x500 Board".to_string(),
+        window_width: WINDOW_W as i32,
+        window_height: WINDOW_H as i32,
+        high_dpi: true,
+        ..Default::default()
     }
 }

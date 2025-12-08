@@ -7,16 +7,17 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
+use bitvec::prelude::*;
+use clap::Parser;
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use std::{
-    collections::{HashMap, VecDeque}, process::id, sync::{Arc, Mutex}
+    collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc::{self, UnboundedSender};
 use uuid::Uuid;
-use clap::Parser;
-use bitvec::{prelude::*};
 
-use crate::shared::{ GRID_H, GRID_W, Pos, SnakeMessage};
+use crate::shared::{GRID_H, GRID_W, Pos, SnakeMessage};
 
 // Helper inline to compute linear index
 #[inline]
@@ -51,24 +52,21 @@ async fn main() {
         .route("/", get(ws_handler))
         .with_state(Arc::new(Mutex::new(game_state)));
 
-    let listener = tokio::net::TcpListener::bind(&args.addr)
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(&args.addr).await.unwrap();
     println!("Server running on ws://{}", args.addr);
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, State(game_state): State<Arc<Mutex<GameState>>>) -> impl IntoResponse {
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(game_state): State<Arc<Mutex<GameState>>>,
+) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, game_state))
 }
 
-// TODO make sure that all clients get ServerMessage::InitSnake when a new client joins
-// TODO make sure that a new client gets all existing snakes when joining
-// Some race coditions?
-// TODO send info about old snakes to the new client
-// TODO collisions
 // TODO food spawning and eating
 // TODO better messaging
+// TODO Isn't lock held for too long?
 
 async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
     let client_id = Uuid::new_v4();
@@ -83,15 +81,27 @@ async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
 
     let initial_snake = VecDeque::from([
         Pos { x: midx, y: midy },
-        Pos { x: midx - 1, y: midy },
-        Pos { x: midx - 2, y: midy },
+        Pos {
+            x: midx - 1,
+            y: midy,
+        },
+        Pos {
+            x: midx - 2,
+            y: midy,
+        },
     ]);
 
-
-    game_state.lock().unwrap().clients.insert(client_id, Client { tx, snake: initial_snake.clone() });
+    game_state.lock().unwrap().clients.insert(
+        client_id,
+        Client {
+            tx: tx.clone(),
+            snake: initial_snake.clone(),
+        },
+    );
     // From now on, the new client will receive messages from other clients
-    
+
     // TODO there can be instant collisons
+    // Potentially invalid states.
     for p in initial_snake.iter() {
         game_state.lock().unwrap().occupied.set(idx(p), true);
     }
@@ -100,7 +110,6 @@ async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
         client_id,
         segments: initial_snake,
     };
-
 
     for client in game_state.lock().unwrap().clients.values() {
         let json = serde_json::to_string(&msg).unwrap();
@@ -117,9 +126,8 @@ async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
         }
     });
 
-    // Read messages from this client and broadcast to others
+    // Read messages from this client, process them, and broadcast to others
     while let Some(Ok(msg)) = ws_rx.next().await {
-
         // Assert that snakes are consistent with occupied grid
         let mut game_state_guard = game_state.lock().unwrap();
         let GameState { clients, occupied } = &mut *game_state_guard;
@@ -127,7 +135,10 @@ async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
         for client in clients.values() {
             for p in client.snake.iter() {
                 if !occupied[idx(p)] {
-                    println!("Inconsistency detected for client {:?} at position {:?}", client.tx, p);
+                    println!(
+                        "Inconsistency detected for client {:?} at position {:?}",
+                        client.tx, p
+                    );
                 }
             }
         }
@@ -135,65 +146,61 @@ async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
         for y in 0..GRID_H {
             for x in 0..GRID_W {
                 let p = Pos { x, y };
-                if !clients.values().any(|c| c.snake.iter().any(|&s| s == p)) {
-                    if occupied[idx(&p)] {
-                        println!("Inconsistency detected at position {:?}", p);
-                    }
+                if !clients.values().any(|c| c.snake.iter().any(|&s| s == p)) && occupied[idx(&p)] {
+                    println!("Inconsistency detected at position {:?}", p);
                 }
             }
         }
 
-        if let Message::Text(txt) = msg {
+        let txt = match msg {
+            Message::Text(t) => t,
+            _ => break,
+        };
 
-            if let Ok(SnakeMessage::Move { client_id: moved_client_id, dx, dy }) = serde_json::from_str::<SnakeMessage>(&txt) {
-                println!("Client {:?} moved by ({}, {})", moved_client_id, dx, dy);
-                // Update the snake position
+        if let Ok(SnakeMessage::Move { dx, dy, .. }) = serde_json::from_str::<SnakeMessage>(&txt) {
+            println!("Client {:?} moved by ({}, {})", client_id, dx, dy);
+            // Update the snake position
 
-                if let Some(client) = clients.get_mut(&moved_client_id) {
-                    let head = client.snake.front().copied().unwrap();
-                    let tail = client.snake.back().copied().unwrap();
-                    let new_head = Pos {
-                        x: (head.x + dx + GRID_W) % GRID_W,
-                        y: (head.y + dy + GRID_H) % GRID_H,
-                    };
-                    
-                    if occupied[idx(&new_head)] {
-                        // Collision detected
-                        println!("Collision detected for client {:?}", moved_client_id);
-                        for p in client.snake.iter() {
-                            occupied.set(idx(p), false);
-                        }
-                        
-                        let dead_msg = SnakeMessage::Dead { client_id: moved_client_id };
-                        let dead_json = serde_json::to_string(&dead_msg).unwrap();
-                        for client in clients.values() {
-                            let _ = client.tx.send(Message::Text(dead_json.clone().into()));
-                        }
-                        break;
+            let client = clients.get_mut(&client_id).unwrap();
 
+            let head = client.snake.front().copied().unwrap();
+            let tail = client.snake.back().copied().unwrap();
+            let new_head = Pos {
+                x: (head.x + dx + GRID_W) % GRID_W,
+                y: (head.y + dy + GRID_H) % GRID_H,
+            };
 
-                    } else {
-                        client.snake.push_front(new_head);
-                        client.snake.pop_back();
-                        // println!("Client {:?} moved to {:?}", moved_client_id, new_head);
-                        occupied.set(idx(&new_head), true);
-                        occupied.set(idx(&tail), false);
-                    }
+            if occupied[idx(&new_head)] {
+                // Collision detected
+                println!("Collision detected for client {:?}", client_id);
+                for p in client.snake.iter() {
+                    occupied.set(idx(p), false);
                 }
 
-                
-            }
-
-            // Broadcast to all other clients
-            for (other_id, other) in clients.iter() {
-                if *other_id == client_id {
-                    continue;
+                let dead_msg = SnakeMessage::Dead { client_id };
+                let dead_json = serde_json::to_string(&dead_msg).unwrap();
+                for client in clients.values() {
+                    let _ = client.tx.send(Message::Text(dead_json.clone().into()));
                 }
-                let _ = other.tx.send(Message::Text(txt.clone().into()));
+                break;
+            } else {
+                client.snake.push_front(new_head);
+                client.snake.pop_back();
+                // println!("Client {:?} moved to {:?}", moved_client_id, new_head);
+                occupied.set(idx(&new_head), true);
+                occupied.set(idx(&tail), false);
             }
+        }
+
+        // Broadcast to all other clients
+        for (other_id, other) in clients.iter() {
+            if *other_id == client_id {
+                continue;
+            }
+            let _ = other.tx.send(Message::Text(txt.clone()));
         }
     }
-
+    let _ = tx.send(Message::Close(None));
     // Remove the client when disconnected.
     game_state.lock().unwrap().clients.remove(&client_id);
 }
