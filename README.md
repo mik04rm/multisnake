@@ -53,6 +53,7 @@ If a new client joins while an existing snake is still occupying the spawn point
   - [ ] **Serialization redundancy:** Refactor message sending to use dedicated serialization/deserialization functions to reduce code redundancy.
   - [ ] **Concurrency:** Optimize mutex usage to prevent thread blocking and improve performance.
   - [ ] **Cosmetics:** Support for different snake colors and smoother animations.
+  - [ ] **Remove unused dependencies**.
 
 ## Tools used include
 - **Tokio** for concurrency.
