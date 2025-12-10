@@ -1,6 +1,6 @@
 # multisnake
 
-> **A multiplayer implementation of the classic Snake game, written in Rust.**
+**A multiplayer implementation of the classic Snake game, written in Rust.**
 
 The game uses a client-server architecture to let multiple players compete on a shared grid.
 
@@ -34,7 +34,7 @@ To add more players, simply open additional terminal windows and run the client 
 
 Currently, all snakes spawn in the **middle row**.
 
-> **You must move your snake away from the middle row before another client joins in.
+**You must move your snake away from the middle row before another client joins in.**
 
 If a new client joins while an existing snake is still occupying the spawn point (the middle row), the game state may become invalid or crash. This is one of the points in the TODO section.
 
