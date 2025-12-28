@@ -1,14 +1,14 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Terminal,
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Terminal,
 };
 use std::{error::Error, io};
 
@@ -49,7 +49,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dy
                 .split(f.size());
 
             let title = Paragraph::new("MultiSnake Launcher")
-                .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+                .style(
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .block(Block::default().borders(Borders::ALL));
             f.render_widget(title, chunks[0]);
 
@@ -60,7 +64,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dy
 
             let list = List::new(items)
                 .block(Block::default().borders(Borders::ALL).title("Select Room"))
-                .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+                .highlight_style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .highlight_symbol(">> ");
 
             f.render_stateful_widget(list, chunks[1], &mut list_state);
@@ -72,14 +80,26 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dy
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
                     KeyCode::Up => {
                         let i = match list_state.selected() {
-                            Some(i) => if i == 0 { rooms.len() - 1 } else { i - 1 },
+                            Some(i) => {
+                                if i == 0 {
+                                    rooms.len() - 1
+                                } else {
+                                    i - 1
+                                }
+                            }
                             None => 0,
                         };
                         list_state.select(Some(i));
                     }
                     KeyCode::Down => {
                         let i = match list_state.selected() {
-                            Some(i) => if i >= rooms.len() - 1 { 0 } else { i + 1 },
+                            Some(i) => {
+                                if i >= rooms.len() - 1 {
+                                    0
+                                } else {
+                                    i + 1
+                                }
+                            }
                             None => 0,
                         };
                         list_state.select(Some(i));

@@ -22,9 +22,9 @@ impl Snake {
                 x: head.x + dx,
                 y: head.y + dy,
             };
-            
+
             self.segments.push_front(new_head);
-            
+
             if growing {
                 self.growing = false;
             } else {
@@ -36,7 +36,7 @@ impl Snake {
 
 pub struct GameState {
     pub my_id: Option<Uuid>,
-    pub my_snake: Option<Snake>, 
+    pub my_snake: Option<Snake>,
     pub other_snakes: HashMap<Uuid, Snake>,
     pub alive: bool,
     pub food: Option<Pos>,
@@ -47,7 +47,7 @@ impl GameState {
     pub fn new() -> Self {
         Self {
             my_id: None,
-            my_snake: None, 
+            my_snake: None,
             other_snakes: HashMap::new(),
             alive: true,
             food: None,
@@ -71,14 +71,24 @@ impl GameState {
 
     pub fn process_message(&mut self, msg: SnakeMessage) {
         match msg {
-            SnakeMessage::InitGame { my_id, snakes, food } => {
+            SnakeMessage::InitGame {
+                my_id,
+                snakes,
+                food,
+            } => {
                 self.my_id = Some(my_id);
                 self.food = Some(food);
                 self.alive = true;
-                
-                assert!(self.my_snake.is_none(), "Received InitGame but my_snake is already set!");
-                assert!(self.other_snakes.is_empty(), "Received InitGame but other_snakes is not empty!");
-                
+
+                assert!(
+                    self.my_snake.is_none(),
+                    "Received InitGame but my_snake is already set!"
+                );
+                assert!(
+                    self.other_snakes.is_empty(),
+                    "Received InitGame but other_snakes is not empty!"
+                );
+
                 for (id, segments) in snakes {
                     if id == my_id {
                         self.my_snake = Some(Snake::new(segments));
@@ -87,7 +97,14 @@ impl GameState {
                     }
                 }
             }
-            SnakeMessage::TickUpdate { moves, food, deaths, eaters, new_snakes, ghosts } => {
+            SnakeMessage::TickUpdate {
+                moves,
+                food,
+                deaths,
+                eaters,
+                new_snakes,
+                ghosts,
+            } => {
                 self.food = Some(food);
 
                 // Add new clients snakes

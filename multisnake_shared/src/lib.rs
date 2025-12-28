@@ -26,20 +26,17 @@ pub enum SnakeMessage {
     /// The heartbeat of the game (sent every ~150ms)
     TickUpdate {
         // Only sends changes in position (dx, dy) for living snakes
-        moves: HashMap<Uuid, (i32, i32)>, 
+        moves: HashMap<Uuid, (i32, i32)>,
         food: Pos,
         // List of IDs that died this tick
         deaths: Vec<Uuid>,
         // List of IDs that grew this tick
         eaters: Vec<Uuid>,
         // Full body segments of players who joined this tick
-        new_snakes: HashMap<Uuid, VecDeque<Pos>>, 
+        new_snakes: HashMap<Uuid, VecDeque<Pos>>,
 
         ghosts: Vec<Uuid>,
     },
     /// Client -> Server: "I want to go this way"
-    MoveIntent {
-        dx: i32,
-        dy: i32,
-    },
+    MoveIntent { dx: i32, dy: i32 },
 }

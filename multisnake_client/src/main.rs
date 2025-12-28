@@ -59,7 +59,11 @@ async fn main() {
         draw::draw_grid();
 
         if let Some(snake) = &game_state.my_snake {
-            draw::draw_snake(&snake.segments, true, game_state.ghosts.contains(&game_state.my_id.unwrap()));
+            draw::draw_snake(
+                &snake.segments,
+                true,
+                game_state.ghosts.contains(&game_state.my_id.unwrap()),
+            );
         }
 
         for (id, snake) in game_state.other_snakes.iter() {

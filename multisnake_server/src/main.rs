@@ -23,10 +23,10 @@ async fn main() {
     for i in 1..=3 {
         let room_state = Arc::new(Mutex::new(GameState::new()));
 
-
         let room_state_clone = room_state.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_millis(TICK_INTERVAL_MS));
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_millis(TICK_INTERVAL_MS));
             loop {
                 interval.tick().await;
                 let mut gs = room_state_clone.lock().unwrap();
@@ -36,11 +36,8 @@ async fn main() {
 
         let path = format!("/room/{}", i);
 
-        app = app.route(
-            &path, 
-            get(handlers::ws_handler).with_state(room_state)
-        );
-        
+        app = app.route(&path, get(handlers::ws_handler).with_state(room_state));
+
         println!("Registered room at ws://{}{}", args.addr, path);
     }
 
