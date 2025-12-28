@@ -32,12 +32,14 @@ pub fn draw_grid() {
     }
 }
 
-pub fn draw_snake(snake: &VecDeque<Pos>, is_me: bool) {
+pub fn draw_snake(snake: &VecDeque<Pos>, is_me: bool, is_ghost: bool) {
     for (i, p) in snake.iter().enumerate() {
         let x = p.x as f32 * CELL_SIZE;
         let y = p.y as f32 * CELL_SIZE;
 
-        let color = if is_me {
+        let color = if is_ghost {
+            if i == 0 { YELLOW } else { DARKYELLOW }
+        } else if is_me {
             if i == 0 { GREEN } else { DARKGREEN }
         } else {
             if i == 0 { RED } else { DARKRED }

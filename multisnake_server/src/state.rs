@@ -1,10 +1,9 @@
 use axum::extract::ws::Message;
-use bitvec::prelude::*;
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-use multisnake_shared::{GRID_H, GRID_W, Pos};
+use multisnake_shared::{GRID_H, GRID_W, Pos, SnakeMessage};
 
 fn idx(p: &Pos) -> usize {
     p.y as usize * GRID_W as usize + p.x as usize
@@ -13,117 +12,213 @@ fn idx(p: &Pos) -> usize {
 pub struct Client {
     pub tx: UnboundedSender<Message>,
     pub snake: VecDeque<Pos>,
+    pub dx: i32,
+    pub dy: i32,
+    pub next_dx: i32,
+    pub next_dy: i32,
+    pub ghost_ticks: u8,
 }
+
+const GHOST_TICKS_START: u8 = 5;
 
 pub struct GameState {
     pub clients: HashMap<Uuid, Client>,
-    pub occupied: BitVec,
+    
+    // 2D grid flattened to 1D. Values > 1 indicate collision.
+    pub occupied: Vec<u8>,
+    
     pub food: Pos,
-}
 
-pub enum MoveResult {
-    Moved,
-    Collision,
-    Ate,
+    // New players to be added next tick.
+    pub pending_joins: HashMap<Uuid, VecDeque<Pos>>,
 }
 
 impl GameState {
     pub fn new() -> Self {
         Self {
             clients: HashMap::new(),
-            occupied: bitvec![0; (GRID_W * GRID_H) as usize],
-            food: Pos {
-                x: rand::random::<u16>() as i32 % GRID_W,
-                y: rand::random::<u16>() as i32 % GRID_H,
-            },
+            occupied: vec![0; (GRID_W * GRID_H) as usize],
+            food: Pos { x: 5, y: 5 }, 
+            pending_joins: HashMap::new(),
         }
     }
 
-    /// Spawns a snake in the middle and marks grid as occupied
-    pub fn add_client(&mut self, client_id: Uuid, tx: UnboundedSender<Message>) -> VecDeque<Pos> {
-        let midx = GRID_W / 2;
-        let midy = GRID_H / 2;
-
-        let initial_snake = VecDeque::from([
-            Pos { x: midx, y: midy },
-            Pos {
-                x: midx - 1,
-                y: midy,
-            },
-            Pos {
-                x: midx - 2,
-                y: midy,
-            },
-        ]);
-
-        // Mark initial positions as occupied
-        // TODO: handle case if some other snake is already there
-        for p in initial_snake.iter() {
-            self.occupied.set(idx(p), true);
-        }
-
-        self.clients.insert(
-            client_id,
-            Client {
-                tx,
-                snake: initial_snake.clone(),
-            },
-        );
-
-        initial_snake
+    fn generate_start_snake(&self) -> VecDeque<Pos> {
+        // Simple random start position logic
+        let start_x = rand::random::<u16>() as i32 % (GRID_W - 5) + 2;
+        let start_y = rand::random::<u16>() as i32 % (GRID_H - 5) + 2;
+        VecDeque::from([
+            Pos { x: start_x, y: start_y },
+            Pos { x: start_x, y: start_y + 1 },
+        ])
     }
 
-    pub fn move_snake(&mut self, client_id: &Uuid, dx: i32, dy: i32) -> MoveResult {
-        let client = self.clients.get(client_id).unwrap();
+    pub fn add_client(&mut self, client_id: Uuid, tx: UnboundedSender<Message>) {
+        let initial_snake = self.generate_start_snake();
 
-        let head = client.snake.front().copied().unwrap();
-        let tail = client.snake.back().copied().unwrap();
+        self.clients.insert(client_id, Client {
+            tx,
+            snake: initial_snake.clone(),
+            dx: 0, dy: -1, 
+            next_dx: 0, next_dy: -1,
+            ghost_ticks: GHOST_TICKS_START,
+        });
 
-        let new_head = Pos {
-            x: (head.x + dx + GRID_W) % GRID_W,
-            y: (head.y + dy + GRID_H) % GRID_H,
-        };
-
-        // Check collision
-        if self.occupied[idx(&new_head)] {
-            for p in client.snake.iter() {
-                self.occupied.set(idx(p), false);
-            }
-            return MoveResult::Collision;
-        }
-
-        // Check if ate food
-        if new_head == self.food {
-            // Grow snake by not removing tail
-            self.occupied.set(idx(&new_head), true);
-            let client = self.clients.get_mut(client_id).unwrap();
-            client.snake.push_front(new_head);
-
-            // Spawn new food
-            // TODO write it cleaner
-            self.food = Pos {
-                x: rand::random::<u16>() as i32 % GRID_W,
-                y: rand::random::<u16>() as i32 % GRID_H,
-            };
-            return MoveResult::Ate;
-        }
-
-        // Apply Move
-        self.occupied.set(idx(&new_head), true);
-        self.occupied.set(idx(&tail), false);
-
-        let client = self.clients.get_mut(client_id).unwrap();
-        client.snake.push_front(new_head);
-        client.snake.pop_back();
-
-        MoveResult::Moved
+        // Add to buffer so existing players see them next tick.
+        self.pending_joins.insert(client_id, initial_snake);
     }
 
     pub fn remove_client(&mut self, client_id: &Uuid) {
         if let Some(client) = self.clients.remove(client_id) {
-            for p in client.snake.iter() {
-                self.occupied.set(idx(p), false);
+            if client.ghost_ticks == 0 {
+                for p in &client.snake {
+                    assert!(Self::is_in_bounds(p));
+                    self.occupied[idx(p)] -= 1;
+                }
             }
+        }
+    }
+
+    pub fn queue_move(&mut self, client_id: &Uuid, dx: i32, dy: i32) {
+        if let Some(client) = self.clients.get_mut(client_id) {
+            // Prevent 180 degree turns
+            if dx != -client.dx || dy != -client.dy {
+                client.next_dx = dx;
+                client.next_dy = dy;
+            }
+        }
+    }
+
+    pub fn get_init_message(&self, my_id: Uuid) -> SnakeMessage {
+        SnakeMessage::InitGame {
+            my_id,
+            snakes: self.clients.iter().map(|(k, v)| (*k, v.snake.clone())).collect(),
+            food: self.food,
+        }
+    }
+
+    fn is_in_bounds(p: &Pos) -> bool {
+        p.x >= 0 && p.x < GRID_W && p.y >= 0 && p.y < GRID_H
+    }
+
+    /// The Server tick
+    pub fn tick(&mut self) {
+        let mut moves_to_broadcast = HashMap::new();
+        let mut dead_clients = Vec::new();
+        let mut eaters = Vec::new();
+
+        let client_ids: Vec<Uuid> = self.clients.keys().copied().collect();
+
+        let mut client_ghosts = Vec::new();
+
+        // Calculate moves & wall collisions.
+        
+        for id in &client_ids {
+            let client = self.clients.get_mut(id).unwrap();
+            if client.ghost_ticks > 0 {
+                client.ghost_ticks -= 1;
+                if client.ghost_ticks == 0 {
+                    // Mark occupied grid when ghost mode ends.
+                    for p in &client.snake {
+                        self.occupied[idx(p)] += 1;
+                    }
+                } else {
+                    client_ghosts.push(*id);
+                }
+            }
+
+            let (dx, dy, current_head) = {
+                (client.next_dx, client.next_dy, *client.snake.front().unwrap())
+            };
+
+            let next_x = current_head.x + dx;
+            let next_y = current_head.y + dy;
+            let new_head = Pos { x: next_x, y: next_y };
+
+            // Wall check.
+            if !Self::is_in_bounds(&new_head) {
+                dead_clients.push(*id);
+                continue;
+            }
+
+            // Apply move logic (grow or move).
+            let old_tail = {
+                client.dx = dx;
+                client.dy = dy;
+
+                let ate = new_head == self.food && client.ghost_ticks == 0;
+                let tail = if ate { None } else { Some(*client.snake.back().unwrap()) };
+
+                client.snake.push_front(new_head);
+                if !ate { client.snake.pop_back(); }
+                else { 
+                    eaters.push(*id); 
+                    self.respawn_food();
+                }
+                tail
+            };
+
+            let client = self.clients.get(id).unwrap(); // TODO ugly
+
+            if client.ghost_ticks == 0 {
+
+                // Update `occupied` grid.
+                self.occupied[idx(&new_head)] += 1;
+                if let Some(old_tail) = old_tail {
+                    self.occupied[idx(&old_tail)] -= 1;
+                }
+            }
+        }
+
+        // Snake-to-snake collision check.
+        for id in &client_ids {
+            if dead_clients.contains(id) { continue; } // TODO opt?
+            
+            let client = self.clients.get(id).unwrap(); // TODO ugly
+
+            let head = client.snake.front().unwrap();
+
+            // > 1 means that there is a collision, we ignore ghost snakes.
+            if client.ghost_ticks == 0 && self.occupied[idx(head)] > 1 {
+                dead_clients.push(*id);
+            } else {
+                moves_to_broadcast.insert(*id, (client.dx, client.dy));
+            }
+        }
+
+        // Broadcast TickUpdate.
+        let update = SnakeMessage::TickUpdate {
+            moves: moves_to_broadcast,
+            food: self.food,
+            deaths: dead_clients.clone(),
+            eaters,
+            new_snakes: self.pending_joins.clone(),
+            ghosts: client_ghosts,
+        };
+        
+        self.pending_joins.clear();
+        
+        if let Ok(json) = serde_json::to_string(&update) {
+            self.broadcast(json);
+        }
+
+        // Remove clients which died.
+        for id in &dead_clients {
+            self.remove_client(id);
+        }
+    }
+
+    fn respawn_food(&mut self) {
+        self.food = Pos {
+            x: rand::random::<u16>() as i32 % GRID_W,
+            y: rand::random::<u16>() as i32 % GRID_H,
+        };
+    }
+
+    fn broadcast(&self, txt: String) {
+        let msg = Message::Text(txt.into());
+        for client in self.clients.values() {
+            let _ = client.tx.send(msg.clone());
         }
     }
 }
