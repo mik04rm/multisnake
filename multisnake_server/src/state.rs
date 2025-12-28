@@ -23,10 +23,10 @@ const GHOST_TICKS_START: u8 = 5;
 
 pub struct GameState {
     pub clients: HashMap<Uuid, Client>,
-    
+
     // 2D grid flattened to 1D. Values > 1 indicate collision.
     pub occupied: Vec<u8>,
-    
+
     pub food: Pos,
 
     // New players to be added next tick.
@@ -38,7 +38,7 @@ impl GameState {
         Self {
             clients: HashMap::new(),
             occupied: vec![0; (GRID_W * GRID_H) as usize],
-            food: Pos { x: 5, y: 5 }, 
+            food: Pos { x: 5, y: 5 },
             pending_joins: HashMap::new(),
         }
     }
@@ -48,21 +48,32 @@ impl GameState {
         let start_x = rand::random::<u16>() as i32 % (GRID_W - 5) + 2;
         let start_y = rand::random::<u16>() as i32 % (GRID_H - 5) + 2;
         VecDeque::from([
-            Pos { x: start_x, y: start_y },
-            Pos { x: start_x, y: start_y + 1 },
+            Pos {
+                x: start_x,
+                y: start_y,
+            },
+            Pos {
+                x: start_x,
+                y: start_y + 1,
+            },
         ])
     }
 
     pub fn add_client(&mut self, client_id: Uuid, tx: UnboundedSender<Message>) {
         let initial_snake = self.generate_start_snake();
 
-        self.clients.insert(client_id, Client {
-            tx,
-            snake: initial_snake.clone(),
-            dx: 0, dy: -1, 
-            next_dx: 0, next_dy: -1,
-            ghost_ticks: GHOST_TICKS_START,
-        });
+        self.clients.insert(
+            client_id,
+            Client {
+                tx,
+                snake: initial_snake.clone(),
+                dx: 0,
+                dy: -1,
+                next_dx: 0,
+                next_dy: -1,
+                ghost_ticks: GHOST_TICKS_START,
+            },
+        );
 
         // Add to buffer so existing players see them next tick.
         self.pending_joins.insert(client_id, initial_snake);
@@ -92,7 +103,11 @@ impl GameState {
     pub fn get_init_message(&self, my_id: Uuid) -> SnakeMessage {
         SnakeMessage::InitGame {
             my_id,
-            snakes: self.clients.iter().map(|(k, v)| (*k, v.snake.clone())).collect(),
+            snakes: self
+                .clients
+                .iter()
+                .map(|(k, v)| (*k, v.snake.clone()))
+                .collect(),
             food: self.food,
         }
     }
@@ -106,15 +121,10 @@ impl GameState {
         let mut moves_to_broadcast = HashMap::new();
         let mut dead_clients = Vec::new();
         let mut eaters = Vec::new();
-
-        let client_ids: Vec<Uuid> = self.clients.keys().copied().collect();
-
         let mut client_ghosts = Vec::new();
 
         // Calculate moves & wall collisions.
-        
-        for id in &client_ids {
-            let client = self.clients.get_mut(id).unwrap();
+        for (id, client) in self.clients.iter_mut() {
             if client.ghost_ticks > 0 {
                 client.ghost_ticks -= 1;
                 if client.ghost_ticks == 0 {
@@ -128,12 +138,19 @@ impl GameState {
             }
 
             let (dx, dy, current_head) = {
-                (client.next_dx, client.next_dy, *client.snake.front().unwrap())
+                (
+                    client.next_dx,
+                    client.next_dy,
+                    *client.snake.front().unwrap(),
+                )
             };
 
             let next_x = current_head.x + dx;
             let next_y = current_head.y + dy;
-            let new_head = Pos { x: next_x, y: next_y };
+            let new_head = Pos {
+                x: next_x,
+                y: next_y,
+            };
 
             // Wall check.
             if !Self::is_in_bounds(&new_head) {
@@ -147,21 +164,22 @@ impl GameState {
                 client.dy = dy;
 
                 let ate = new_head == self.food && client.ghost_ticks == 0;
-                let tail = if ate { None } else { Some(*client.snake.back().unwrap()) };
+                let tail = if ate {
+                    None
+                } else {
+                    Some(*client.snake.back().unwrap())
+                };
 
                 client.snake.push_front(new_head);
-                if !ate { client.snake.pop_back(); }
-                else { 
-                    eaters.push(*id); 
-                    self.respawn_food();
+                if !ate {
+                    client.snake.pop_back();
+                } else {
+                    eaters.push(*id);
                 }
                 tail
             };
 
-            let client = self.clients.get(id).unwrap(); // TODO ugly
-
             if client.ghost_ticks == 0 {
-
                 // Update `occupied` grid.
                 self.occupied[idx(&new_head)] += 1;
                 if let Some(old_tail) = old_tail {
@@ -170,9 +188,15 @@ impl GameState {
             }
         }
 
+        for _ in 0..eaters.len() {
+            self.respawn_food();
+        }
+
         // Snake-to-snake collision check.
         for (id, client) in &self.clients {
-            if dead_clients.contains(id) { continue; } // TODO opt?
+            if dead_clients.contains(id) {
+                continue;
+            } // TODO opt?
 
             let head = client.snake.front().unwrap();
 
@@ -193,9 +217,9 @@ impl GameState {
             new_snakes: self.pending_joins.clone(),
             ghosts: client_ghosts,
         };
-        
+
         self.pending_joins.clear();
-        
+
         if let Ok(json) = serde_json::to_string(&update) {
             self.broadcast(json);
         }

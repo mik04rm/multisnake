@@ -12,7 +12,7 @@ struct Args {
     addr: String,
 }
 
-const TICK_INTERVAL_MS: u64 = 200;
+const TICK_INTERVAL_MS: u64 = 1000;
 
 #[tokio::main]
 async fn main() {
