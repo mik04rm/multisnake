@@ -171,10 +171,8 @@ impl GameState {
         }
 
         // Snake-to-snake collision check.
-        for id in &client_ids {
+        for (id, client) in &self.clients {
             if dead_clients.contains(id) { continue; } // TODO opt?
-            
-            let client = self.clients.get(id).unwrap(); // TODO ugly
 
             let head = client.snake.front().unwrap();
 
