@@ -1,5 +1,5 @@
 use macroquad::prelude::{KeyCode, is_key_pressed};
-use multisnake_shared::{Pos, SnakeMessage}; // Removed GRID constants, we trust server coords
+use multisnake_shared::{Pos, SnakeMessage};
 use std::collections::{HashMap, VecDeque};
 use uuid::Uuid;
 
@@ -71,13 +71,8 @@ impl GameState {
 
     pub fn process_message(&mut self, msg: SnakeMessage) {
         match msg {
-            SnakeMessage::InitGame {
-                my_id,
-                snakes,
-                food,
-            } => {
+            SnakeMessage::InitGame { my_id, snakes } => {
                 self.my_id = Some(my_id);
-                self.food = Some(food);
                 self.alive = true;
 
                 assert!(

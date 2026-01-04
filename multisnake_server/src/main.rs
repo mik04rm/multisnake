@@ -12,7 +12,9 @@ struct Args {
     addr: String,
 }
 
-const TICK_INTERVAL_MS: u64 = 1000;
+const TICK_INTERVAL_MS: u64 = 300;
+
+const N_ROOMS: u32 = 3;
 
 #[tokio::main]
 async fn main() {
@@ -20,7 +22,7 @@ async fn main() {
 
     let mut app = Router::new();
 
-    for i in 1..=3 {
+    for i in 1..=N_ROOMS {
         let room_state = Arc::new(Mutex::new(GameState::new()));
 
         let room_state_clone = room_state.clone();

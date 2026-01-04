@@ -48,7 +48,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dy
                 .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
                 .split(f.size());
 
-            let title = Paragraph::new("MultiSnake Launcher")
+            let title = Paragraph::new("multisnake")
                 .style(
                     Style::default()
                         .fg(Color::Green)

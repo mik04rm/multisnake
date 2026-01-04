@@ -100,7 +100,7 @@ impl GameState {
         }
     }
 
-    pub fn get_init_message(&self, my_id: Uuid) -> SnakeMessage {
+    pub fn new_init_message(&self, my_id: Uuid) -> SnakeMessage {
         SnakeMessage::InitGame {
             my_id,
             snakes: self
@@ -108,7 +108,6 @@ impl GameState {
                 .iter()
                 .map(|(k, v)| (*k, v.snake.clone()))
                 .collect(),
-            food: self.food,
         }
     }
 

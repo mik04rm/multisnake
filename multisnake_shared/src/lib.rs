@@ -21,7 +21,6 @@ pub enum SnakeMessage {
         my_id: Uuid,
         // Snapshot of all existing snakes
         snakes: HashMap<Uuid, VecDeque<Pos>>,
-        food: Pos,
     },
     /// The heartbeat of the game (sent every ~150ms)
     TickUpdate {

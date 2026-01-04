@@ -39,7 +39,7 @@ async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
         let mut gs = game_state.lock().unwrap();
         gs.add_client(client_id, tx.clone());
 
-        let init_msg = gs.get_init_message(client_id);
+        let init_msg = gs.new_init_message(client_id);
         let _ = tx.send(Message::Text(
             serde_json::to_string(&init_msg).unwrap().into(),
         ));
