@@ -13,9 +13,9 @@ use tokio::sync::broadcast;
 struct Args {
     #[arg(default_value = "127.0.0.1:8080")]
     addr: String,
+    #[arg(default_value = "300")]
+    tick_interval_ms: u64
 }
-
-const TICK_INTERVAL_MS: u64 = 300;
 
 const N_ROOMS: u32 = 3;
 
@@ -40,7 +40,7 @@ async fn main() {
         let room_state_clone = room_state.clone();
         tokio::spawn(async move {
             let mut interval =
-                tokio::time::interval(std::time::Duration::from_millis(TICK_INTERVAL_MS));
+                tokio::time::interval(std::time::Duration::from_millis(args.tick_interval_ms));
             loop {
                 interval.tick().await;
                 let mut gs = room_state_clone.lock().await;

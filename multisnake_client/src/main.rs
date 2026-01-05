@@ -14,11 +14,20 @@ const BACK_TUI_DELAY_MS: u64 = 5000;
 async fn main() {
     loop {
         println!("Launching Menu...");
-        let selected_room = match tui::run_room_selector() {
+
+        // TODO: maybe one-threaded runtime better or maybe more things should be inside it?
+        let tokio_runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+
+        let maybe_selected_room = tokio_runtime.block_on(async {
+            tui::run_room_selector().await
+        });
+
+
+        let selected_room = match maybe_selected_room {
             Ok(Some(room)) => room,
             Ok(None) => {
                 println!("Exiting...");
-                return; // User pressed Esc/q
+                return;
             }
             Err(e) => {
                 eprintln!("TUI Error: {}", e);
