@@ -3,6 +3,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use multisnake_shared::LobbyUpdate;
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
@@ -10,20 +11,17 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
-use std::{error::Error, io};
+use std::{error::Error, io, thread};
 
 pub fn run_room_selector() -> Result<Option<u32>, Box<dyn Error>> {
-    // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Run the app
     let result = run_app(&mut terminal);
 
-    // Restore terminal
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -35,18 +33,49 @@ pub fn run_room_selector() -> Result<Option<u32>, Box<dyn Error>> {
     result
 }
 
+use std::sync::mpsc;
+use tungstenite::connect;
+
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dyn Error>> {
-    let rooms = vec!["Room 1", "Room 2", "Room 3"];
+    let mut rooms_count = vec![0; 3]; // TODO: minor check
     let mut list_state = ListState::default();
     list_state.select(Some(0));
 
+    let (tx, rx) = mpsc::channel::<LobbyUpdate>();
+
+    thread::spawn(move || {
+        let url = "ws://127.0.0.1:8080/room";
+        if let Ok((mut socket, _)) = connect(url) {
+            loop {
+                if let Ok(msg) = socket.read() {
+                    if let tungstenite::Message::Text(text) = msg {
+                        if let Ok(update) = serde_json::from_str::<LobbyUpdate>(&text) {
+                            let _ = tx.send(update);
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+    });
+
     loop {
+        // Check for updates from network
+        while let Ok(update) = rx.try_recv() {
+            let idx = (update.room_id - 1) as usize;
+            if idx < rooms_count.len() {
+                rooms_count[idx] = update.player_count;
+            }
+        }
+
+        // Drawing
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(2)
                 .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
-                .split(f.size());
+                .split(f.area());
 
             let title = Paragraph::new("multisnake")
                 .style(
@@ -57,13 +86,18 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dy
                 .block(Block::default().borders(Borders::ALL));
             f.render_widget(title, chunks[0]);
 
-            let items: Vec<ListItem> = rooms
+            // Map room names to include player counts
+            let items: Vec<ListItem> = rooms_count
                 .iter()
-                .map(|r| ListItem::new(*r).style(Style::default().fg(Color::White)))
+                .enumerate()
+                .map(|(i, count)| {
+                    let content = format!("Room {}  [{} players]", i + 1, count);
+                    ListItem::new(content).style(Style::default().fg(Color::White))
+                })
                 .collect();
 
             let list = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title("Select Room"))
+                .block(Block::default().borders(Borders::ALL).title("Select room"))
                 .highlight_style(
                     Style::default()
                         .fg(Color::Yellow)
@@ -74,34 +108,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dy
             f.render_stateful_widget(list, chunks[1], &mut list_state);
         })?;
 
-        if event::poll(std::time::Duration::from_millis(100))? {
+        // Input handling
+        if event::poll(std::time::Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
                     KeyCode::Up => {
-                        let i = match list_state.selected() {
-                            Some(i) => {
-                                if i == 0 {
-                                    rooms.len() - 1
-                                } else {
-                                    i - 1
-                                }
-                            }
-                            None => 0,
-                        };
+                        let i = list_state
+                            .selected()
+                            .map_or(0, |i| if i == 0 { 2 } else { i - 1 });
                         list_state.select(Some(i));
                     }
                     KeyCode::Down => {
-                        let i = match list_state.selected() {
-                            Some(i) => {
-                                if i >= rooms.len() - 1 {
-                                    0
-                                } else {
-                                    i + 1
-                                }
-                            }
-                            None => 0,
-                        };
+                        let i = list_state
+                            .selected()
+                            .map_or(0, |i| if i >= 2 { 0 } else { i + 1 });
                         list_state.select(Some(i));
                     }
                     KeyCode::Enter => {

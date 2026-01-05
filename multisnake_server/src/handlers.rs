@@ -4,59 +4,106 @@ use axum::{
     response::IntoResponse,
 };
 use futures_util::{SinkExt, stream::StreamExt};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::state::GameState;
-use multisnake_shared::SnakeMessage;
+use multisnake_shared::{LobbyUpdate, SnakeMessage};
 
-pub async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(game_state): State<Arc<Mutex<GameState>>>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, game_state))
+pub struct RoomContext {
+    pub game_state: Arc<Mutex<GameState>>,
+    pub lobby_tx: tokio::sync::broadcast::Sender<LobbyUpdate>,
+    pub room_id: u32,
 }
 
-async fn handle_socket(socket: WebSocket, game_state: Arc<Mutex<GameState>>) {
+pub(crate) async fn in_game_handler(
+    ws: WebSocketUpgrade,
+    State(ctx): State<Arc<RoomContext>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_in_game_connection(socket, ctx))
+}
+
+pub(crate) async fn in_tui_handler(
+    ws: WebSocketUpgrade,
+    State(lobby_tx): State<tokio::sync::broadcast::Sender<LobbyUpdate>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_in_tui_connection(socket, lobby_tx))
+}
+
+async fn handle_in_game_connection(socket: WebSocket, ctx: Arc<RoomContext>) {
     let client_id = Uuid::new_v4();
     let (mut ws_tx, mut ws_rx) = socket.split();
-
-    // Internal Channel: GameState -> WebSocket Task
     let (tx, mut rx) = mpsc::unbounded_channel();
 
-    // Forwarder task
-    tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            if ws_tx.send(msg).await.is_err() {
-                break;
-            }
-        }
-    });
-
-    // Add client & send GameInit message (game state snapshot)
     {
-        let mut gs = game_state.lock().unwrap();
+        let mut gs = ctx.game_state.lock().await;
         gs.add_client(client_id, tx.clone());
 
         let init_msg = gs.new_init_message(client_id);
-        let _ = tx.send(Message::Text(
-            serde_json::to_string(&init_msg).unwrap().into(),
-        ));
+        if let Ok(json) = serde_json::to_string(&init_msg) {
+            let _ = tx.send(Message::Text(json.into()));
+        }
+
+        let player_count = gs.clients.len();
+        let _ = ctx.lobby_tx.send(LobbyUpdate {
+            room_id: ctx.room_id,
+            player_count,
+        });
     }
 
-    // Receive inputs
-    while let Some(Ok(msg)) = ws_rx.next().await {
-        if let Message::Text(text) = msg {
-            if let Ok(SnakeMessage::MoveIntent { dx, dy }) = serde_json::from_str(&text) {
-                let mut gs = game_state.lock().unwrap();
-                gs.queue_move(&client_id, dx, dy);
+    loop {
+        tokio::select! {
+            // Outbound: From Game State -> WebSocket
+            Some(msg) = rx.recv() => {
+                if ws_tx.send(msg).await.is_err() { break; }
+            }
+
+            // Inbound: From WebSocket -> Game State
+            result = ws_rx.next() => {
+                match result {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Ok(SnakeMessage::MoveIntent { dx, dy }) = serde_json::from_str(&text) {
+                            let mut gs = ctx.game_state.lock().await;
+                            gs.queue_move(&client_id, dx, dy);
+
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    _ => {}
+                }
             }
         }
     }
-    let _ = tx.send(Message::Close(None));
 
-    // Cleanup
-    game_state.lock().unwrap().remove_client(&client_id);
-    println!("Client {:?} disconnected", client_id);
+    let _ = ws_tx.close().await;
+
+    let mut gs = ctx.game_state.lock().await;
+    gs.remove_client(&client_id);
+    let player_count = gs.clients.len();
+    let _ = ctx.lobby_tx.send(LobbyUpdate {
+        room_id: ctx.room_id,
+        player_count,
+    });
+
+    println!(
+        "Client {:?} disconnected and removed from state.",
+        client_id
+    );
+}
+
+async fn handle_in_tui_connection(
+    mut socket: WebSocket,
+    lobby_tx: tokio::sync::broadcast::Sender<LobbyUpdate>,
+) {
+    let mut rx = lobby_tx.subscribe();
+
+    // Listen for broadcasted updates and push them to the TUI websocket
+    while let Ok(update) = rx.recv().await {
+        let json = serde_json::to_string(&update).unwrap();
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            break; // TUI closed or disconnected
+        }
+    }
 }

@@ -22,7 +22,8 @@ pub enum SnakeMessage {
         // Snapshot of all existing snakes
         snakes: HashMap<Uuid, VecDeque<Pos>>,
     },
-    /// The heartbeat of the game (sent every ~150ms)
+
+    /// The game update sent to clients every tick
     TickUpdate {
         // Only sends changes in position (dx, dy) for living snakes
         moves: HashMap<Uuid, (i32, i32)>,
@@ -36,6 +37,13 @@ pub enum SnakeMessage {
 
         ghosts: Vec<Uuid>,
     },
+
     /// Client -> Server: "I want to go this way"
     MoveIntent { dx: i32, dy: i32 },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct LobbyUpdate {
+    pub room_id: u32,
+    pub player_count: usize,
 }

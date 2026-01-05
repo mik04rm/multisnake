@@ -3,11 +3,10 @@ mod network;
 mod state;
 mod tui;
 
-use std::time::{Duration, Instant};
-
 use macroquad::prelude::*;
 use multisnake_shared::SnakeMessage;
 use state::GameState;
+use std::time::{Duration, Instant};
 
 const BACK_TUI_DELAY_MS: u64 = 5000;
 
@@ -27,7 +26,6 @@ async fn main() {
             }
         };
 
-        println!("Selected Room: {}", selected_room);
         // Channels for communication between server and client
         let (from_client_tx, from_client_rx) =
             tokio::sync::mpsc::unbounded_channel::<SnakeMessage>();
@@ -40,7 +38,7 @@ async fn main() {
         );
 
         let mut game_state = GameState::new();
-        let mut death_time: Option<Instant> = None; // Track when the player died
+        let mut death_time: Option<Instant> = None;
 
         loop {
             if game_state.alive {
@@ -62,9 +60,10 @@ async fn main() {
                         death_time = Some(Instant::now());
                     }
                     Some(time) => {
-                        // 3. Exit condition: If 5 seconds have passed, break the loop
                         if time.elapsed() >= Duration::from_millis(BACK_TUI_DELAY_MS) {
-                            break; // This exits the macroquad loop
+                            // TODO: come back to tui in nice way
+                            // (can just pump frames without closing macroquad window if it is hard)
+                            break;
                         }
                     }
                 }
