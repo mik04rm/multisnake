@@ -1,10 +1,11 @@
 use macroquad::prelude::{KeyCode, is_key_pressed};
-use multisnake_shared::{Pos, SnakeMessage};
 use std::{
     collections::{HashMap, VecDeque},
     time::Instant,
 };
 use uuid::Uuid;
+
+use multisnake_shared::{Pos, SnakeMessage};
 
 pub struct Snake {
     pub segments: VecDeque<Pos>,
@@ -37,7 +38,7 @@ impl Snake {
     }
 }
 
-pub struct GameState {
+pub struct RoomState {
     pub my_id: Option<Uuid>,
     pub my_snake: Option<Snake>,
     pub other_snakes: HashMap<Uuid, Snake>,
@@ -47,14 +48,11 @@ pub struct GameState {
 
     pub prev_my_snake: Option<VecDeque<Pos>>,
     pub prev_other_snakes: HashMap<uuid::Uuid, VecDeque<Pos>>,
-
-    // Czas ostatniej aktualizacji z serwera
     pub last_update_time: Instant,
-
-    pub tick_duration_ms: Option<u64>,
+    pub tick_duration_ms: Option<u32>,
 }
 
-impl GameState {
+impl RoomState {
     pub fn new() -> Self {
         Self {
             my_id: None,
@@ -88,7 +86,7 @@ impl GameState {
 
     pub fn process_message(&mut self, msg: SnakeMessage) {
         match msg {
-            SnakeMessage::InitGame {
+            SnakeMessage::OnJoin {
                 my_id,
                 snakes,
                 tick_duration_ms,
@@ -99,11 +97,11 @@ impl GameState {
 
                 assert!(
                     self.my_snake.is_none(),
-                    "Received InitGame but my_snake is already set!"
+                    "Received OnJoin but my_snake is already set!"
                 );
                 assert!(
                     self.other_snakes.is_empty(),
-                    "Received InitGame but other_snakes is not empty!"
+                    "Received OnJoin but other_snakes is not empty!"
                 );
 
                 for (id, segments) in snakes {

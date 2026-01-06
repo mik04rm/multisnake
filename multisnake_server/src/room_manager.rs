@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 use multisnake_shared::{GRID_H, GRID_W, Pos, SnakeMessage};
 
-fn idx(p: &Pos) -> usize {
-    p.y as usize * GRID_W as usize + p.x as usize
-}
+const GHOST_TIME_MS: u32 = 8000;
+const PADDING: i32 = 15;
+const INITIAL_SNAKE_LENGTH: u32 = 5;
 
 pub struct Client {
     pub tx: UnboundedSender<Message>,
@@ -16,12 +16,10 @@ pub struct Client {
     pub dy: i32,
     pub next_dx: i32,
     pub next_dy: i32,
-    pub ghost_ticks: u8,
+    pub ghost_ticks: u32,
 }
 
-const GHOST_TICKS_START: u8 = 5;
-
-pub struct GameState {
+pub struct RoomManager {
     pub clients: HashMap<Uuid, Client>,
 
     // 2D grid flattened to 1D. Values > 1 indicate collision.
@@ -32,11 +30,11 @@ pub struct GameState {
     // New players to be added next tick.
     pub pending_joins: HashMap<Uuid, VecDeque<Pos>>,
 
-    pub tick_duration_ms: u64,
+    pub tick_duration_ms: u32,
 }
 
-impl GameState {
-    pub fn new(tick_duration_ms: u64) -> Self {
+impl RoomManager {
+    pub fn new(tick_duration_ms: u32) -> Self {
         Self {
             clients: HashMap::new(),
             occupied: vec![0; (GRID_W * GRID_H) as usize],
@@ -46,24 +44,8 @@ impl GameState {
         }
     }
 
-    fn generate_start_snake(&self) -> VecDeque<Pos> {
-        // Simple random start position logic
-        let start_x = rand::random::<u16>() as i32 % (GRID_W - 5) + 2;
-        let start_y = rand::random::<u16>() as i32 % (GRID_H - 5) + 2;
-        VecDeque::from([
-            Pos {
-                x: start_x,
-                y: start_y,
-            },
-            Pos {
-                x: start_x,
-                y: start_y + 1,
-            },
-        ])
-    }
-
     pub fn add_client(&mut self, client_id: Uuid, tx: UnboundedSender<Message>) {
-        let initial_snake = self.generate_start_snake();
+        let initial_snake = initial_snake_segments(INITIAL_SNAKE_LENGTH);
 
         self.clients.insert(
             client_id,
@@ -74,7 +56,7 @@ impl GameState {
                 dy: -1,
                 next_dx: 0,
                 next_dy: -1,
-                ghost_ticks: GHOST_TICKS_START,
+                ghost_ticks: GHOST_TIME_MS / self.tick_duration_ms + 1,
             },
         );
 
@@ -86,7 +68,7 @@ impl GameState {
         if let Some(client) = self.clients.remove(client_id) {
             if client.ghost_ticks == 0 {
                 for p in &client.snake {
-                    assert!(Self::is_in_bounds(p));
+                    assert!(is_in_bounds(p));
                     self.occupied[idx(p)] -= 1;
                 }
             }
@@ -104,7 +86,7 @@ impl GameState {
     }
 
     pub fn new_init_message(&self, my_id: Uuid) -> SnakeMessage {
-        SnakeMessage::InitGame {
+        SnakeMessage::OnJoin {
             my_id,
             snakes: self
                 .clients
@@ -115,10 +97,6 @@ impl GameState {
         }
     }
 
-    fn is_in_bounds(p: &Pos) -> bool {
-        p.x >= 0 && p.x < GRID_W && p.y >= 0 && p.y < GRID_H
-    }
-
     /// The Server tick
     pub fn tick(&mut self) {
         let mut moves_to_broadcast = HashMap::new();
@@ -126,7 +104,7 @@ impl GameState {
         let mut eaters = Vec::new();
         let mut client_ghosts = Vec::new();
 
-        // Calculate moves & wall collisions.
+        // Calculate moves and wall collisions.
         for (id, client) in self.clients.iter_mut() {
             if client.ghost_ticks > 0 {
                 client.ghost_ticks -= 1;
@@ -156,7 +134,7 @@ impl GameState {
             };
 
             // Wall check.
-            if !Self::is_in_bounds(&new_head) {
+            if !is_in_bounds(&new_head) {
                 dead_clients.push(*id);
                 continue;
             }
@@ -235,8 +213,8 @@ impl GameState {
 
     fn respawn_food(&mut self) {
         self.food = Pos {
-            x: rand::random::<u16>() as i32 % GRID_W,
-            y: rand::random::<u16>() as i32 % GRID_H,
+            x: rand::random::<u16>() as i32 % (GRID_W - 2 * PADDING) + PADDING,
+            y: rand::random::<u16>() as i32 % (GRID_H - 2 * PADDING) + PADDING,
         };
     }
 
@@ -246,4 +224,24 @@ impl GameState {
             let _ = client.tx.send(msg.clone());
         }
     }
+}
+
+fn initial_snake_segments(length: u32) -> VecDeque<Pos> {
+    let start_x = rand::random::<u16>() as i32 % (GRID_W - 2 * PADDING) + PADDING;
+    let start_y = rand::random::<u16>() as i32 % (GRID_H - 2 * PADDING) + PADDING;
+    let segments = (0..length)
+        .map(|i| Pos {
+            x: start_x,
+            y: start_y + i as i32,
+        })
+        .collect();
+    segments
+}
+
+fn idx(p: &Pos) -> usize {
+    p.y as usize * GRID_W as usize + p.x as usize
+}
+
+fn is_in_bounds(p: &Pos) -> bool {
+    p.x >= 0 && p.x < GRID_W && p.y >= 0 && p.y < GRID_H
 }

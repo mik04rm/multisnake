@@ -1,11 +1,11 @@
 mod draw;
-mod network;
-mod state;
+mod room_connection;
+mod room_state;
 mod tui;
 
 use macroquad::prelude::*;
 use multisnake_shared::SnakeMessage;
-use state::GameState;
+use room_state::RoomState;
 use std::time::{Duration, Instant};
 
 const BACK_TUI_DELAY_MS: u64 = 5000;
@@ -13,10 +13,7 @@ const BACK_TUI_DELAY_MS: u64 = 5000;
 #[macroquad::main(window_conf)]
 async fn main() {
     loop {
-        println!("Launching Menu...");
-
-        // TODO: maybe one-threaded runtime better or maybe more things should be inside it?
-        let tokio_runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+        let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
 
         let maybe_selected_room = tokio_runtime.block_on(async { tui::run_room_selector().await });
 
@@ -27,7 +24,7 @@ async fn main() {
                 return;
             }
             Err(e) => {
-                eprintln!("TUI Error: {}", e);
+                eprintln!("TUI error: {}", e);
                 return;
             }
         };
@@ -37,18 +34,21 @@ async fn main() {
             tokio::sync::mpsc::unbounded_channel::<SnakeMessage>();
         let (from_server_tx, from_server_rx) = std::sync::mpsc::channel();
 
-        network::spawn_network_thread(
-            format!("ws://127.0.0.1:8080/room/{}", selected_room),
-            from_client_rx,
-            from_server_tx,
-        );
+        tokio_runtime.spawn(async move {
+            room_connection::run(
+                format!("ws://127.0.0.1:8080/room/{}", selected_room),
+                from_client_rx,
+                from_server_tx,
+            )
+            .await;
+        });
 
-        let mut game_state = GameState::new();
+        let mut room_state = RoomState::new();
         let mut death_time: Option<Instant> = None;
 
         loop {
-            if game_state.alive {
-                if let Some((dx, dy)) = game_state.handle_input() {
+            if room_state.alive {
+                if let Some((dx, dy)) = room_state.handle_input() {
                     let _ = from_client_tx.send(SnakeMessage::MoveIntent { dx, dy });
                 }
             }
@@ -56,14 +56,14 @@ async fn main() {
             // Process incoming messages from server
             while let Ok(msg) = from_server_rx.try_recv() {
                 if matches!(msg, SnakeMessage::TickUpdate { .. }) {
-                    game_state.snapshot_state();
+                    room_state.snapshot_state();
                 }
-                game_state.process_message(msg);
+                room_state.process_message(msg);
             }
 
             // Drawing
-            if !game_state.alive && game_state.my_id.is_some() {
-                draw::draw_game_over();
+            if !room_state.alive && room_state.my_id.is_some() {
+                draw::draw_game_finished();
                 match death_time {
                     None => {
                         death_time = Some(Instant::now());
@@ -83,35 +83,35 @@ async fn main() {
             clear_background(BLACK);
             draw::draw_grid();
 
-            let elapsed = game_state.last_update_time.elapsed().as_millis();
+            let elapsed = room_state.last_update_time.elapsed().as_millis();
 
             let mut t = 1.0; // TODO: xddd
-            if let Some(tick_duration_ms) = game_state.tick_duration_ms {
+            if let Some(tick_duration_ms) = room_state.tick_duration_ms {
                 t = (elapsed as f32 / tick_duration_ms as f32).min(1.0);
             }
 
-            if let Some(snake) = &game_state.my_snake {
+            if let Some(snake) = &room_state.my_snake {
                 draw::draw_snake(
                     &snake.segments,
-                    game_state.prev_my_snake.as_ref(),
+                    room_state.prev_my_snake.as_ref(),
                     t,
                     true,
-                    game_state.ghosts.contains(&game_state.my_id.unwrap()),
+                    room_state.ghosts.contains(&room_state.my_id.unwrap()),
                 );
             }
 
-            for (id, snake) in game_state.other_snakes.iter() {
-                let prev_segments = game_state.prev_other_snakes.get(id);
+            for (id, snake) in room_state.other_snakes.iter() {
+                let prev_segments = room_state.prev_other_snakes.get(id);
 
                 draw::draw_snake(
                     &snake.segments,
                     prev_segments,
                     t,
                     false,
-                    game_state.ghosts.contains(id),
+                    room_state.ghosts.contains(id),
                 );
             }
-            if let Some(food_pos) = game_state.food {
+            if let Some(food_pos) = room_state.food {
                 draw::draw_food(Some(food_pos));
             }
 

@@ -4,7 +4,6 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use futures_util::StreamExt;
-use multisnake_shared::LobbyUpdate;
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
@@ -14,6 +13,8 @@ use ratatui::{
 };
 use std::{error::Error, io};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+
+use multisnake_shared::{LobbyUpdate, N_ROOMS};
 
 pub async fn run_room_selector() -> Result<Option<u32>, Box<dyn Error>> {
     enable_raw_mode()?;
@@ -36,7 +37,7 @@ pub async fn run_room_selector() -> Result<Option<u32>, Box<dyn Error>> {
 }
 
 async fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dyn Error>> {
-    let mut rooms_count = [0; 3]; // TODO
+    let mut rooms_count = [0; N_ROOMS as usize]; // TODO
     let mut list_state = ListState::default();
     list_state.select(Some(0));
 
@@ -122,7 +123,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, 
                         }
                     }
                     None => {
-                        // TODO: dont stop running TUI
+                        // TODO: dont stop running TUI on disconnect
                         break;
                     }
                     _ => {}

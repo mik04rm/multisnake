@@ -1,11 +1,11 @@
-use std::collections::{HashMap, VecDeque};
-
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 use uuid::Uuid;
 
-pub const GRID_W: i32 = 40;
-pub const GRID_H: i32 = 40;
-pub const MOVE_DELAY_SEC: f32 = 0.2;
+pub const N_ROOMS: u32 = 3;
+
+pub const GRID_W: i32 = 50;
+pub const GRID_H: i32 = 50;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pos {
@@ -17,15 +17,15 @@ pub struct Pos {
 #[serde(tag = "type", content = "data")]
 pub enum SnakeMessage {
     /// Sent to a client immediately upon connection
-    InitGame {
+    OnJoin {
         my_id: Uuid,
         // Snapshot of all existing snakes
         snakes: HashMap<Uuid, VecDeque<Pos>>,
 
-        tick_duration_ms: u64,
+        tick_duration_ms: u32,
     },
 
-    /// The game update sent to clients every tick
+    /// The room update sent to clients every tick
     TickUpdate {
         // Only sends changes in position (dx, dy) for living snakes
         moves: HashMap<Uuid, (i32, i32)>,

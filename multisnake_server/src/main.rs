@@ -1,10 +1,9 @@
 mod handlers;
-mod state;
+mod room_manager;
 
 use axum::{Router, routing::get};
 use clap::Parser;
-use multisnake_shared::LobbyUpdate;
-use state::GameState;
+use room_manager::RoomManager;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -12,49 +11,51 @@ use tokio::sync::Mutex;
 use tokio::sync::broadcast;
 use tokio::time;
 
+use multisnake_shared::LobbyUpdate;
+use multisnake_shared::N_ROOMS;
+
 use crate::handlers::RoomContext;
+
+const BROADCAST_CAPACITY: usize = 1024;
 
 #[derive(Parser)]
 struct Args {
     #[arg(default_value = "127.0.0.1:8080")]
     addr: String,
-    #[arg(default_value = "300")]
-    tick_duration_ms: u64,
+    #[arg(default_value = "100")]
+    tick_duration_ms: u32,
 }
-
-const N_ROOMS: u32 = 3;
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
-    // TODO: minor check 100 bound?
-    let (lobby_tx, _) = broadcast::channel::<LobbyUpdate>(100);
+    let (lobby_tx, _) = broadcast::channel::<LobbyUpdate>(BROADCAST_CAPACITY);
 
     let mut app = Router::new();
 
     for i in 1..=N_ROOMS {
-        let room_state = Arc::new(Mutex::new(GameState::new(args.tick_duration_ms)));
+        let room_manager = Arc::new(Mutex::new(RoomManager::new(args.tick_duration_ms)));
 
         let ctx = Arc::new(RoomContext {
-            game_state: room_state.clone(),
+            room_manager: room_manager.clone(),
             lobby_tx: lobby_tx.clone(),
             room_id: i,
         });
 
-        let room_state_clone = room_state.clone();
+        let room_manager_clone = room_manager.clone();
         tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_millis(args.tick_duration_ms));
+            let mut interval = time::interval(Duration::from_millis(args.tick_duration_ms as u64));
             loop {
                 interval.tick().await;
-                let mut gs = room_state_clone.lock().await;
-                gs.tick();
+                let mut room_guard = room_manager_clone.lock().await;
+                room_guard.tick();
             }
         });
 
         let path = format!("/room/{}", i);
 
-        app = app.route(&path, get(handlers::in_game_handler).with_state(ctx));
+        app = app.route(&path, get(handlers::in_room_handler).with_state(ctx));
 
         println!("Registered room at ws://{}{}", args.addr, path);
     }
