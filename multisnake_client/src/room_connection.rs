@@ -30,8 +30,8 @@ pub async fn run(
                         break;
                     }
                 }
-            }
-            server_msg = ws_rx.next() => {
+            },
+            server_msg = ws_rx.next() =>{
                 match server_msg {
                     Some(Ok(Message::Text(txt))) => {
                         if let Ok(parsed) = serde_json::from_str::<SnakeMessage>(&txt) {
@@ -40,11 +40,11 @@ pub async fn run(
                             }
                         }
                     }
-                    Some(Ok(Message::Close(_))) |    None =>
-                    break,
+                    Some(Ok(Message::Close(_))) | None => break,
                     _ => {}
+
                 }
-            }
+            },
         }
     }
 }

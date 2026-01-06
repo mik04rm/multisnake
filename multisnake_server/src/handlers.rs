@@ -67,7 +67,6 @@ async fn handle_in_room_connection(socket: WebSocket, ctx: Arc<RoomContext>) {
                         if let Ok(SnakeMessage::MoveIntent { dx, dy }) = serde_json::from_str(&text) {
                             let mut room_guard = ctx.room_manager.lock().await;
                             room_guard.queue_move(&client_id, dx, dy);
-
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
