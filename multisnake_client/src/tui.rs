@@ -1,16 +1,16 @@
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use futures_util::StreamExt;
 use multisnake_shared::LobbyUpdate;
 use ratatui::{
+    Terminal,
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Terminal,
 };
 use std::{error::Error, io};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
@@ -36,7 +36,7 @@ pub async fn run_room_selector() -> Result<Option<u32>, Box<dyn Error>> {
 }
 
 async fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dyn Error>> {
-    let mut rooms_count = vec![0; 3];
+    let mut rooms_count = [0; 3]; // TODO
     let mut list_state = ListState::default();
     list_state.select(Some(0));
 
@@ -56,7 +56,11 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, 
                 .split(f.area());
 
             let title = Paragraph::new("multisnake")
-                .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+                .style(
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .block(Block::default().borders(Borders::ALL));
             f.render_widget(title, chunks[0]);
 
@@ -71,7 +75,11 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, 
 
             let list = List::new(items)
                 .block(Block::default().borders(Borders::ALL).title("Select room"))
-                .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+                .highlight_style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .highlight_symbol(">> ");
 
             f.render_stateful_widget(list, chunks[1], &mut list_state);

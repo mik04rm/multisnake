@@ -31,15 +31,18 @@ pub struct GameState {
 
     // New players to be added next tick.
     pub pending_joins: HashMap<Uuid, VecDeque<Pos>>,
+
+    pub tick_duration_ms: u64,
 }
 
 impl GameState {
-    pub fn new() -> Self {
+    pub fn new(tick_duration_ms: u64) -> Self {
         Self {
             clients: HashMap::new(),
             occupied: vec![0; (GRID_W * GRID_H) as usize],
             food: Pos { x: 5, y: 5 },
             pending_joins: HashMap::new(),
+            tick_duration_ms,
         }
     }
 
@@ -108,6 +111,7 @@ impl GameState {
                 .iter()
                 .map(|(k, v)| (*k, v.snake.clone()))
                 .collect(),
+            tick_duration_ms: self.tick_duration_ms,
         }
     }
 

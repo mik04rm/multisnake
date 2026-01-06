@@ -2,50 +2,83 @@ use macroquad::prelude::*;
 use multisnake_shared::{GRID_H, GRID_W, Pos};
 use std::collections::VecDeque;
 
-pub const CELL_SIZE: f32 = 20.0;
+pub const CELL_SIZE: f32 = 15.0;
 pub const WINDOW_W: f32 = GRID_W as f32 * CELL_SIZE;
 pub const WINDOW_H: f32 = GRID_H as f32 * CELL_SIZE;
 
-static DARKRED: Color = Color::new(0.5, 0.0, 0.0, 1.0);
-static DARKYELLOW: Color = Color::new(0.5, 0.5, 0.0, 1.0);
+const DARKRED: Color = Color::new(0.5, 0.0, 0.0, 1.0);
+const DARKYELLOW: Color = Color::new(0.5, 0.5, 0.0, 1.0);
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
 
 pub fn draw_grid() {
-    for x in 0..=GRID_W {
+    for x in 1..GRID_W {
         draw_line(
             x as f32 * CELL_SIZE,
             0.0,
             x as f32 * CELL_SIZE,
             WINDOW_H,
             1.0,
-            GRAY,
+            DARKGRAY,
         );
     }
-    for y in 0..=GRID_H {
+    for y in 1..GRID_H {
         draw_line(
             0.0,
             y as f32 * CELL_SIZE,
             WINDOW_W,
             y as f32 * CELL_SIZE,
             1.0,
-            GRAY,
+            DARKGRAY,
         );
     }
 }
 
-pub fn draw_snake(snake: &VecDeque<Pos>, is_me: bool, is_ghost: bool) {
-    for (i, p) in snake.iter().enumerate() {
-        let x = p.x as f32 * CELL_SIZE;
-        let y = p.y as f32 * CELL_SIZE;
+pub fn draw_snake(
+    snake: &VecDeque<Pos>,
+    prev_snake: Option<&VecDeque<Pos>>,
+    t: f32,
+    is_me: bool,
+    is_ghost: bool,
+) {
+    for (i, current_pos) in snake.iter().enumerate().rev() {
+        let is_head = i == 0;
+        let is_tail = i == snake.len() - 1;
 
-        let color = if is_ghost {
-            if i == 0 { YELLOW } else { DARKYELLOW }
-        } else if is_me {
-            if i == 0 { GREEN } else { DARKGREEN }
-        } else {
-            if i == 0 { RED } else { DARKRED }
+        let color = match (is_ghost, is_me, is_head) {
+            (true, _, true) => YELLOW,
+            (true, _, false) => DARKYELLOW,
+            (_, true, true) => GREEN,
+            (_, true, false) => DARKGREEN,
+            (_, _, true) => RED,
+            (_, _, false) => DARKRED,
         };
 
-        draw_rectangle(x, y, CELL_SIZE, CELL_SIZE, color);
+        // Visually fills the gap when the snake is changing direction.
+        if is_tail {
+            draw_rectangle(
+                current_pos.x as f32 * CELL_SIZE,
+                current_pos.y as f32 * CELL_SIZE,
+                CELL_SIZE,
+                CELL_SIZE,
+                color,
+            );
+        }
+
+        let mut x = current_pos.x as f32;
+        let mut y = current_pos.y as f32;
+
+        if (is_head || is_tail)
+            && let Some(prev) = prev_snake
+        {
+            let prev_pos = prev.get(i).unwrap_or(current_pos);
+            x = lerp(prev_pos.x as f32, x, t);
+            y = lerp(prev_pos.y as f32, y, t);
+        }
+
+        draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, color);
     }
 }
 

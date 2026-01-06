@@ -3,8 +3,8 @@ use std::collections::{HashMap, VecDeque};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub const GRID_W: i32 = 20;
-pub const GRID_H: i32 = 20;
+pub const GRID_W: i32 = 40;
+pub const GRID_H: i32 = 40;
 pub const MOVE_DELAY_SEC: f32 = 0.2;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +21,8 @@ pub enum SnakeMessage {
         my_id: Uuid,
         // Snapshot of all existing snakes
         snakes: HashMap<Uuid, VecDeque<Pos>>,
+
+        tick_duration_ms: u64,
     },
 
     /// The game update sent to clients every tick

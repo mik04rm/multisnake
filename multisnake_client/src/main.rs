@@ -18,10 +18,7 @@ async fn main() {
         // TODO: maybe one-threaded runtime better or maybe more things should be inside it?
         let tokio_runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 
-        let maybe_selected_room = tokio_runtime.block_on(async {
-            tui::run_room_selector().await
-        });
-
+        let maybe_selected_room = tokio_runtime.block_on(async { tui::run_room_selector().await });
 
         let selected_room = match maybe_selected_room {
             Ok(Some(room)) => room,
@@ -58,6 +55,9 @@ async fn main() {
 
             // Process incoming messages from server
             while let Ok(msg) = from_server_rx.try_recv() {
+                if matches!(msg, SnakeMessage::TickUpdate { .. }) {
+                    game_state.snapshot_state();
+                }
                 game_state.process_message(msg);
             }
 
@@ -83,18 +83,34 @@ async fn main() {
             clear_background(BLACK);
             draw::draw_grid();
 
+            let elapsed = game_state.last_update_time.elapsed().as_millis();
+
+            let mut t = 1.0; // TODO: xddd
+            if let Some(tick_duration_ms) = game_state.tick_duration_ms {
+                t = (elapsed as f32 / tick_duration_ms as f32).min(1.0);
+            }
+
             if let Some(snake) = &game_state.my_snake {
                 draw::draw_snake(
                     &snake.segments,
+                    game_state.prev_my_snake.as_ref(),
+                    t,
                     true,
                     game_state.ghosts.contains(&game_state.my_id.unwrap()),
                 );
             }
 
             for (id, snake) in game_state.other_snakes.iter() {
-                draw::draw_snake(&snake.segments, false, game_state.ghosts.contains(&id));
-            }
+                let prev_segments = game_state.prev_other_snakes.get(id);
 
+                draw::draw_snake(
+                    &snake.segments,
+                    prev_segments,
+                    t,
+                    false,
+                    game_state.ghosts.contains(id),
+                );
+            }
             if let Some(food_pos) = game_state.food {
                 draw::draw_food(Some(food_pos));
             }

@@ -5,8 +5,8 @@ use axum::{
 };
 use futures_util::{SinkExt, stream::StreamExt};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::sync::mpsc;
+use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
 use crate::state::GameState;
@@ -14,7 +14,7 @@ use multisnake_shared::{LobbyUpdate, SnakeMessage};
 
 pub struct RoomContext {
     pub game_state: Arc<Mutex<GameState>>,
-    pub lobby_tx: tokio::sync::broadcast::Sender<LobbyUpdate>,
+    pub lobby_tx: broadcast::Sender<LobbyUpdate>,
     pub room_id: u32,
 }
 
@@ -27,7 +27,7 @@ pub(crate) async fn in_game_handler(
 
 pub(crate) async fn in_tui_handler(
     ws: WebSocketUpgrade,
-    State(lobby_tx): State<tokio::sync::broadcast::Sender<LobbyUpdate>>,
+    State(lobby_tx): State<broadcast::Sender<LobbyUpdate>>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_in_tui_connection(socket, lobby_tx))
 }
@@ -93,13 +93,10 @@ async fn handle_in_game_connection(socket: WebSocket, ctx: Arc<RoomContext>) {
     );
 }
 
-async fn handle_in_tui_connection(
-    mut socket: WebSocket,
-    lobby_tx: tokio::sync::broadcast::Sender<LobbyUpdate>,
-) {
+async fn handle_in_tui_connection(mut socket: WebSocket, lobby_tx: broadcast::Sender<LobbyUpdate>) {
     let mut rx = lobby_tx.subscribe();
 
-    // Listen for broadcasted updates and push them to the TUI websocket
+    // Listen for broadcasted updates and forward them to the TUI websocket
     while let Ok(update) = rx.recv().await {
         let json = serde_json::to_string(&update).unwrap();
         if socket.send(Message::Text(json.into())).await.is_err() {

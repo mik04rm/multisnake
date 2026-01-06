@@ -1,6 +1,9 @@
 use macroquad::prelude::{KeyCode, is_key_pressed};
 use multisnake_shared::{Pos, SnakeMessage};
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::Instant,
+};
 use uuid::Uuid;
 
 pub struct Snake {
@@ -41,6 +44,14 @@ pub struct GameState {
     pub alive: bool,
     pub food: Option<Pos>,
     pub ghosts: Vec<Uuid>,
+
+    pub prev_my_snake: Option<VecDeque<Pos>>,
+    pub prev_other_snakes: HashMap<uuid::Uuid, VecDeque<Pos>>,
+
+    // Czas ostatniej aktualizacji z serwera
+    pub last_update_time: Instant,
+
+    pub tick_duration_ms: Option<u64>,
 }
 
 impl GameState {
@@ -52,6 +63,12 @@ impl GameState {
             alive: true,
             food: None,
             ghosts: Vec::new(),
+
+            prev_my_snake: None,
+            prev_other_snakes: HashMap::new(),
+            last_update_time: Instant::now(),
+
+            tick_duration_ms: None,
         }
     }
 
@@ -71,9 +88,14 @@ impl GameState {
 
     pub fn process_message(&mut self, msg: SnakeMessage) {
         match msg {
-            SnakeMessage::InitGame { my_id, snakes } => {
+            SnakeMessage::InitGame {
+                my_id,
+                snakes,
+                tick_duration_ms,
+            } => {
                 self.my_id = Some(my_id);
                 self.alive = true;
+                self.tick_duration_ms = Some(tick_duration_ms);
 
                 assert!(
                     self.my_snake.is_none(),
@@ -112,7 +134,7 @@ impl GameState {
                 // Process deaths
                 for id in deaths {
                     if Some(id) == self.my_id {
-                        print!("You died!\n");
+                        println!("You died!");
                         self.alive = false;
                     }
                     self.other_snakes.remove(&id);
@@ -135,5 +157,18 @@ impl GameState {
             }
             _ => {}
         }
+    }
+
+    pub fn snapshot_state(&mut self) {
+        if let Some(snake) = &self.my_snake {
+            self.prev_my_snake = Some(snake.segments.clone());
+        }
+
+        self.prev_other_snakes.clear();
+        for (id, snake) in &self.other_snakes {
+            self.prev_other_snakes.insert(*id, snake.segments.clone());
+        }
+
+        self.last_update_time = std::time::Instant::now();
     }
 }
