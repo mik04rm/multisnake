@@ -53,7 +53,12 @@ pub struct RoomState {
 }
 
 impl RoomState {
-    pub fn new(my_id: Uuid, snakes: HashMap<Uuid, VecDeque<Pos>>, tick_duration_ms: u32, food: Pos) -> Self {
+    pub fn new(
+        my_id: Uuid,
+        snakes: HashMap<Uuid, VecDeque<Pos>>,
+        tick_duration_ms: u32,
+        food: Pos,
+    ) -> Self {
         let mut my_snake = Snake::new(VecDeque::new());
         let mut other_snakes = HashMap::new();
 

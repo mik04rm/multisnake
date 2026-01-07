@@ -1,6 +1,8 @@
 use axum::{
-    extract::State,
-    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    extract::{
+        State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
     response::IntoResponse,
 };
 use futures_util::{SinkExt, stream::StreamExt};
@@ -18,6 +20,11 @@ pub struct RoomContext {
     pub room_id: u32,
 }
 
+pub struct TuiContext {
+    pub lobby_tx: broadcast::Sender<LobbyUpdate>,
+    pub snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<Vec<LobbyUpdate>>>,
+}
+
 pub async fn in_room_handler(
     ws: WebSocketUpgrade,
     State(ctx): State<Arc<RoomContext>>,
@@ -27,9 +34,9 @@ pub async fn in_room_handler(
 
 pub async fn in_tui_handler(
     ws: WebSocketUpgrade,
-    State(lobby_tx): State<broadcast::Sender<LobbyUpdate>>,
+    State(tui_ctx): State<Arc<TuiContext>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_in_tui_connection(socket, lobby_tx))
+    ws.on_upgrade(move |socket| handle_in_tui_connection(socket, tui_ctx))
 }
 
 async fn handle_in_room_connection(socket: WebSocket, ctx: Arc<RoomContext>) {
@@ -92,8 +99,18 @@ async fn handle_in_room_connection(socket: WebSocket, ctx: Arc<RoomContext>) {
     );
 }
 
-async fn handle_in_tui_connection(mut socket: WebSocket, lobby_tx: broadcast::Sender<LobbyUpdate>) {
-    let mut rx = lobby_tx.subscribe();
+async fn handle_in_tui_connection(mut socket: WebSocket, tui_ctx: Arc<TuiContext>) {
+    let mut rx = tui_ctx.lobby_tx.subscribe();
+    let (response_tx, mut response_rx) = mpsc::unbounded_channel();
+    tui_ctx.snapshot_req_tx.send(response_tx).unwrap();
+    let initial_snapshot = response_rx.recv().await.unwrap();
+
+    for update in initial_snapshot {
+        let json = serde_json::to_string(&update).unwrap();
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            return; // TUI disconnected
+        }
+    }
 
     // Listen for broadcasted updates and forward them to the TUI websocket
     loop {

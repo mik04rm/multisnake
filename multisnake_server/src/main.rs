@@ -9,12 +9,14 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::time;
 
 use multisnake_shared::LobbyUpdate;
 use multisnake_shared::N_ROOMS;
 
 use crate::handlers::RoomContext;
+use crate::handlers::TuiContext;
 
 const BROADCAST_CAPACITY: usize = 1024;
 
@@ -31,11 +33,17 @@ async fn main() {
     let args = Args::parse();
 
     let (lobby_tx, _) = broadcast::channel::<LobbyUpdate>(BROADCAST_CAPACITY);
+    let (snapshot_req_tx, mut snapshot_req_rx) =
+        mpsc::unbounded_channel::<mpsc::UnboundedSender<Vec<LobbyUpdate>>>();
 
     let mut app = Router::new();
 
+    let mut managers = Vec::new();
+
     for i in 1..=N_ROOMS {
         let room_manager = Arc::new(Mutex::new(RoomManager::new(args.tick_duration_ms)));
+
+        managers.push((i, room_manager.clone()));
 
         let ctx = Arc::new(RoomContext {
             room_manager: room_manager.clone(),
@@ -60,7 +68,30 @@ async fn main() {
         println!("Registered room at ws://{}{}", args.addr, path);
     }
 
-    app = app.route("/room", get(handlers::in_tui_handler).with_state(lobby_tx));
+    tokio::spawn(async move {
+        while let Some(reply_tx) = snapshot_req_rx.recv().await {
+            let mut snapshot = Vec::new();
+
+            for (id, manager) in &managers {
+                let count = {
+                    let guard = manager.lock().await;
+                    guard.clients.len()
+                };
+                snapshot.push(LobbyUpdate {
+                    room_id: *id,
+                    player_count: count,
+                });
+            }
+
+            let _ = reply_tx.send(snapshot);
+        }
+    });
+
+    let tui_ctx = Arc::new(TuiContext {
+        lobby_tx,
+        snapshot_req_tx,
+    });
+    app = app.route("/room", get(handlers::in_tui_handler).with_state(tui_ctx));
 
     let listener = TcpListener::bind(&args.addr).await.unwrap();
     println!("Server running on ws://{}", args.addr);
