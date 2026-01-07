@@ -7,8 +7,8 @@ use clap::Parser;
 use macroquad::prelude::*;
 use multisnake_shared::SnakeMessage;
 use room_state::RoomState;
-use tokio::sync::mpsc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 
 const BACK_TUI_DELAY_MS: u64 = 3000;
 
@@ -51,13 +51,18 @@ async fn main() {
                 }
             }
             clear_background(BLACK);
-            draw_text("Please select a room in the terminal...", 20.0, 30.0, 30.0, WHITE);
+            draw_text(
+                "Please select a room in the terminal...",
+                20.0,
+                30.0,
+                30.0,
+                WHITE,
+            );
             next_frame().await;
         }
 
         // Channels for communication between server and client
-        let (from_client_tx, from_client_rx) =
-            mpsc::unbounded_channel::<SnakeMessage>();
+        let (from_client_tx, from_client_rx) = mpsc::unbounded_channel::<SnakeMessage>();
         let (from_server_tx, from_server_rx) = std::sync::mpsc::channel();
 
         let server_addr = args.server_addr.clone();

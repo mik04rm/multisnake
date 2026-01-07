@@ -131,7 +131,7 @@ impl RoomState {
 
                 // Process moves
                 for (id, (dx, dy)) in moves {
-                    let growing = eaters.contains(&id); // TODO opt, can change message structure
+                    let growing = eaters.contains(&id);
 
                     if id == self.my_id {
                         self.my_snake.apply_move(dx, dy, growing);
