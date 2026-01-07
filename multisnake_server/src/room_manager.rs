@@ -65,12 +65,12 @@ impl RoomManager {
     }
 
     pub fn remove_client(&mut self, client_id: &Uuid) {
-        if let Some(client) = self.clients.remove(client_id) {
-            if client.ghost_ticks == 0 {
-                for p in &client.snake {
-                    assert!(is_in_bounds(p));
-                    self.occupied[idx(p)] -= 1;
-                }
+        if let Some(client) = self.clients.remove(client_id)
+            && client.ghost_ticks == 0
+        {
+            for p in &client.snake {
+                assert!(is_in_bounds(p));
+                self.occupied[idx(p)] -= 1;
             }
         }
     }
@@ -230,13 +230,13 @@ impl RoomManager {
 fn initial_snake_segments(length: u32) -> VecDeque<Pos> {
     let start_x = rand::random::<u16>() as i32 % (GRID_W - 2 * PADDING) + PADDING;
     let start_y = rand::random::<u16>() as i32 % (GRID_H - 2 * PADDING) + PADDING;
-    let segments = (0..length)
+
+    (0..length)
         .map(|i| Pos {
             x: start_x,
             y: start_y + i as i32,
         })
-        .collect();
-    segments
+        .collect()
 }
 
 fn idx(p: &Pos) -> usize {

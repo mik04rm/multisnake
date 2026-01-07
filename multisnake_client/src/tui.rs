@@ -91,27 +91,24 @@ async fn run_app<B: Backend>(
 
         tokio::select! {
             maybe_event = event_stream.next() => {
-                match maybe_event {
-                    Some(Ok(Event::Key(key))) => {
-                        match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
-                            KeyCode::Up => {
-                                let i = list_state.selected().map_or(0, |i| if i == 0 { 2 } else { i - 1 });
-                                list_state.select(Some(i));
-                            }
-                            KeyCode::Down => {
-                                let i = list_state.selected().map_or(0, |i| if i >= 2 { 0 } else { i + 1 });
-                                list_state.select(Some(i));
-                            }
-                            KeyCode::Enter => {
-                                if let Some(i) = list_state.selected() {
-                                    return Ok(Some((i + 1) as u32));
-                                }
-                            }
-                            _ => {}
+                if let Some(Ok(Event::Key(key))) = maybe_event {
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
+                        KeyCode::Up => {
+                            let i = list_state.selected().map_or(0, |i| if i == 0 { 2 } else { i - 1 });
+                            list_state.select(Some(i));
                         }
+                        KeyCode::Down => {
+                            let i = list_state.selected().map_or(0, |i| if i >= 2 { 0 } else { i + 1 });
+                            list_state.select(Some(i));
+                        }
+                        KeyCode::Enter => {
+                            if let Some(i) = list_state.selected() {
+                                return Ok(Some((i + 1) as u32));
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
             maybe_message = ws_rx.next() => {

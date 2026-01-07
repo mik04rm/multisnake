@@ -91,10 +91,10 @@ async fn main() {
         let mut death_time: Option<Instant> = None;
 
         loop {
-            if room_state.alive {
-                if let Some((dx, dy)) = room_state.handle_input() {
-                    let _ = from_client_tx.send(SnakeMessage::MoveIntent { dx, dy });
-                }
+            if room_state.alive
+                && let Some((dx, dy)) = room_state.handle_input()
+            {
+                let _ = from_client_tx.send(SnakeMessage::MoveIntent { dx, dy });
             }
 
             // Process incoming messages from server

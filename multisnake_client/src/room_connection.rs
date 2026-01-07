@@ -31,13 +31,13 @@ pub async fn run(
                     }
                 }
             },
-            server_msg = ws_rx.next() =>{
+            server_msg = ws_rx.next() => {
                 match server_msg {
                     Some(Ok(Message::Text(txt))) => {
-                        if let Ok(parsed) = serde_json::from_str::<SnakeMessage>(&txt) {
-                            if from_server_tx.send(parsed).is_err() {
-                                break;
-                            }
+                        if let Ok(parsed) = serde_json::from_str::<SnakeMessage>(&txt)
+                            && from_server_tx.send(parsed).is_err()
+                        {
+                            break;
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
