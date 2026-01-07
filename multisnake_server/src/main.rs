@@ -22,7 +22,7 @@ const BROADCAST_CAPACITY: usize = 1024;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(default_value = "127.0.0.1:8080")]
+    #[arg(default_value = "127.0.0.1:4040")]
     addr: String,
     #[arg(default_value = "100")]
     tick_duration_ms: u32,
