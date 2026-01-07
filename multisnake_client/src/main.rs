@@ -13,7 +13,7 @@ const BACK_TUI_DELAY_MS: u64 = 5000;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(default_value = "127.0.0.1:8080")]
+    #[arg(default_value = "127.0.0.1:4040")]
     server_addr: String,
 }
 
