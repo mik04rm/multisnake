@@ -7,9 +7,10 @@ use clap::Parser;
 use macroquad::prelude::*;
 use multisnake_shared::SnakeMessage;
 use room_state::RoomState;
+use tokio::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const BACK_TUI_DELAY_MS: u64 = 5000;
+const BACK_TUI_DELAY_MS: u64 = 3000;
 
 #[derive(Parser)]
 struct Args {
@@ -24,24 +25,39 @@ async fn main() {
     loop {
         let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
 
-        let maybe_selected_room =
-            tokio_runtime.block_on(async { tui::run_room_selector(&args.server_addr).await });
+        let (tui_tx, mut tui_rx) = mpsc::unbounded_channel();
+        let server_addr_clone = args.server_addr.clone();
 
-        let selected_room = match maybe_selected_room {
-            Ok(Some(room)) => room,
-            Ok(None) => {
-                println!("Exiting...");
-                return;
+        // Spawn TUI in a separate task
+        tokio_runtime.spawn(async move {
+            let result = tui::run_room_selector(&server_addr_clone).await.unwrap();
+            let _ = tui_tx.send(result);
+        });
+
+        let selected_room;
+
+        // Wait for room selection
+        loop {
+            if let Ok(maybe_room) = tui_rx.try_recv() {
+                match maybe_room {
+                    Some(room) => {
+                        selected_room = room;
+                        break;
+                    }
+                    None => {
+                        println!("Exiting...");
+                        return;
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("TUI error: {}", e);
-                return;
-            }
-        };
+            clear_background(BLACK);
+            draw_text("Please select a room in the terminal...", 20.0, 30.0, 30.0, WHITE);
+            next_frame().await;
+        }
 
         // Channels for communication between server and client
         let (from_client_tx, from_client_rx) =
-            tokio::sync::mpsc::unbounded_channel::<SnakeMessage>();
+            mpsc::unbounded_channel::<SnakeMessage>();
         let (from_server_tx, from_server_rx) = std::sync::mpsc::channel();
 
         let server_addr = args.server_addr.clone();
@@ -93,8 +109,6 @@ async fn main() {
                     }
                     Some(time) => {
                         if time.elapsed() >= Duration::from_millis(BACK_TUI_DELAY_MS) {
-                            // TODO: come back to tui in nice way
-                            // (can just pump frames without closing macroquad window if it is hard)
                             break;
                         }
                     }
