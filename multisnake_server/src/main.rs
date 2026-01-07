@@ -1,5 +1,5 @@
-mod handlers;
 mod room_manager;
+mod socket_handlers;
 
 use axum::{Router, routing::get};
 use clap::Parser;
@@ -15,8 +15,8 @@ use tokio::time;
 use multisnake_shared::LobbyUpdate;
 use multisnake_shared::N_ROOMS;
 
-use crate::handlers::RoomContext;
-use crate::handlers::TuiContext;
+use crate::socket_handlers::RoomContext;
+use crate::socket_handlers::TuiContext;
 
 const BROADCAST_CAPACITY: usize = 1024;
 
@@ -63,7 +63,7 @@ async fn main() {
 
         let path = format!("/room/{}", i);
 
-        app = app.route(&path, get(handlers::in_room_handler).with_state(ctx));
+        app = app.route(&path, get(socket_handlers::in_room_handler).with_state(ctx));
 
         println!("Registered room at ws://{}{}", args.addr, path);
     }
@@ -91,7 +91,10 @@ async fn main() {
         lobby_tx,
         snapshot_req_tx,
     });
-    app = app.route("/room", get(handlers::in_tui_handler).with_state(tui_ctx));
+    app = app.route(
+        "/room",
+        get(socket_handlers::in_tui_handler).with_state(tui_ctx),
+    );
 
     let listener = TcpListener::bind(&args.addr).await.unwrap();
     println!("Server running on ws://{}", args.addr);

@@ -36,7 +36,10 @@ pub async fn run_room_selector(server_addr: &str) -> Result<Option<u32>, Box<dyn
     result
 }
 
-async fn run_app<B: Backend>(terminal: &mut Terminal<B>, server_addr: &str) -> Result<Option<u32>, Box<dyn Error>> {
+async fn run_app<B: Backend>(
+    terminal: &mut Terminal<B>,
+    server_addr: &str,
+) -> Result<Option<u32>, Box<dyn Error>> {
     let mut rooms_count = [0; N_ROOMS as usize]; // TODO
     let mut list_state = ListState::default();
     list_state.select(Some(0));

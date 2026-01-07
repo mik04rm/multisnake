@@ -24,7 +24,8 @@ async fn main() {
     loop {
         let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
 
-        let maybe_selected_room = tokio_runtime.block_on(async { tui::run_room_selector(&args.server_addr).await });
+        let maybe_selected_room =
+            tokio_runtime.block_on(async { tui::run_room_selector(&args.server_addr).await });
 
         let selected_room = match maybe_selected_room {
             Ok(Some(room)) => room,
@@ -77,7 +78,7 @@ async fn main() {
 
             // Process incoming messages from server
             while let Ok(msg) = from_server_rx.try_recv() {
-                if matches!(msg, SnakeMessage::TickUpdate { .. }) {
+                if let SnakeMessage::TickUpdate { .. } = msg {
                     room_state.snapshot_state();
                 }
                 room_state.process_message(msg);
