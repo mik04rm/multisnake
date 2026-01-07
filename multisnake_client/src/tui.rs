@@ -87,7 +87,6 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, 
         })?;
 
         tokio::select! {
-            // Wait for Keyboard Events
             maybe_event = event_stream.next() => {
                 match maybe_event {
                     Some(Ok(Event::Key(key))) => {

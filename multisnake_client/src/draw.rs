@@ -89,12 +89,10 @@ pub fn draw_snake(
     }
 }
 
-pub fn draw_food(food: Option<Pos>) {
-    if let Some(food_pos) = food {
-        let x = food_pos.x as f32 * CELL_SIZE;
-        let y = food_pos.y as f32 * CELL_SIZE;
-        draw_rectangle(x, y, CELL_SIZE, CELL_SIZE, FOOD_COLOR);
-    }
+pub fn draw_food(food: Pos) {
+    let x = food.x as f32 * CELL_SIZE;
+    let y = food.y as f32 * CELL_SIZE;
+    draw_rectangle(x, y, CELL_SIZE, CELL_SIZE, FOOD_COLOR);
 }
 pub fn draw_game_finished() {
     clear_background(BLACK);

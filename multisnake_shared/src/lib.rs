@@ -22,6 +22,8 @@ pub enum SnakeMessage {
         // Snapshot of all existing snakes
         snakes: HashMap<Uuid, VecDeque<Pos>>,
 
+        food: Pos,
+
         tick_duration_ms: u32,
     },
 

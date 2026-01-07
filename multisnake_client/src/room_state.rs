@@ -39,34 +39,45 @@ impl Snake {
 }
 
 pub struct RoomState {
-    pub my_id: Option<Uuid>,
-    pub my_snake: Option<Snake>,
+    pub my_id: Uuid,
+    pub my_snake: Snake,
     pub other_snakes: HashMap<Uuid, Snake>,
     pub alive: bool,
-    pub food: Option<Pos>,
+    pub food: Pos,
     pub ghosts: Vec<Uuid>,
 
     pub prev_my_snake: Option<VecDeque<Pos>>,
     pub prev_other_snakes: HashMap<uuid::Uuid, VecDeque<Pos>>,
     pub last_update_time: Instant,
-    pub tick_duration_ms: Option<u32>,
+    pub tick_duration_ms: u32,
 }
 
 impl RoomState {
-    pub fn new() -> Self {
+    pub fn new(my_id: Uuid, snakes: HashMap<Uuid, VecDeque<Pos>>, tick_duration_ms: u32, food: Pos) -> Self {
+        let mut my_snake = Snake::new(VecDeque::new());
+        let mut other_snakes = HashMap::new();
+
+        for (id, segments) in snakes {
+            if id == my_id {
+                my_snake = Snake::new(segments);
+            } else {
+                other_snakes.insert(id, Snake::new(segments));
+            }
+        }
+
         Self {
-            my_id: None,
-            my_snake: None,
-            other_snakes: HashMap::new(),
+            my_id,
+            my_snake,
+            other_snakes,
             alive: true,
-            food: None,
+            food,
             ghosts: Vec::new(),
 
             prev_my_snake: None,
             prev_other_snakes: HashMap::new(),
             last_update_time: Instant::now(),
 
-            tick_duration_ms: None,
+            tick_duration_ms,
         }
     }
 
@@ -86,32 +97,7 @@ impl RoomState {
 
     pub fn process_message(&mut self, msg: SnakeMessage) {
         match msg {
-            SnakeMessage::OnJoin {
-                my_id,
-                snakes,
-                tick_duration_ms,
-            } => {
-                self.my_id = Some(my_id);
-                self.alive = true;
-                self.tick_duration_ms = Some(tick_duration_ms);
-
-                assert!(
-                    self.my_snake.is_none(),
-                    "Received OnJoin but my_snake is already set!"
-                );
-                assert!(
-                    self.other_snakes.is_empty(),
-                    "Received OnJoin but other_snakes is not empty!"
-                );
-
-                for (id, segments) in snakes {
-                    if id == my_id {
-                        self.my_snake = Some(Snake::new(segments));
-                    } else {
-                        self.other_snakes.insert(id, Snake::new(segments));
-                    }
-                }
-            }
+            SnakeMessage::OnJoin { .. } => {}
             SnakeMessage::TickUpdate {
                 moves,
                 food,
@@ -120,18 +106,18 @@ impl RoomState {
                 new_snakes,
                 ghosts,
             } => {
-                self.food = Some(food);
+                self.food = food;
 
                 // Add new clients snakes
                 for (id, segments) in new_snakes {
-                    if Some(id) != self.my_id {
+                    if id != self.my_id {
                         self.other_snakes.insert(id, Snake::new(segments));
                     }
                 }
 
                 // Process deaths
                 for id in deaths {
-                    if Some(id) == self.my_id {
+                    if id == self.my_id {
                         println!("You died!");
                         self.alive = false;
                     }
@@ -142,10 +128,8 @@ impl RoomState {
                 for (id, (dx, dy)) in moves {
                     let growing = eaters.contains(&id); // TODO opt, can change message structure
 
-                    if Some(id) == self.my_id {
-                        if let Some(snake) = &mut self.my_snake {
-                            snake.apply_move(dx, dy, growing);
-                        }
+                    if id == self.my_id {
+                        self.my_snake.apply_move(dx, dy, growing);
                     } else if let Some(snake) = self.other_snakes.get_mut(&id) {
                         snake.apply_move(dx, dy, growing);
                     }
@@ -158,10 +142,7 @@ impl RoomState {
     }
 
     pub fn snapshot_state(&mut self) {
-        if let Some(snake) = &self.my_snake {
-            self.prev_my_snake = Some(snake.segments.clone());
-        }
-
+        self.prev_my_snake = Some(self.my_snake.segments.clone());
         self.prev_other_snakes.clear();
         for (id, snake) in &self.other_snakes {
             self.prev_other_snakes.insert(*id, snake.segments.clone());

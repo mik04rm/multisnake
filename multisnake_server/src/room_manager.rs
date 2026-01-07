@@ -94,6 +94,7 @@ impl RoomManager {
                 .map(|(k, v)| (*k, v.snake.clone()))
                 .collect(),
             tick_duration_ms: self.tick_duration_ms,
+            food: self.food,
         }
     }
 

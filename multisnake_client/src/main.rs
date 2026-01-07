@@ -43,7 +43,18 @@ async fn main() {
             .await;
         });
 
-        let mut room_state = RoomState::new();
+        let Ok(SnakeMessage::OnJoin {
+            my_id,
+            snakes,
+            tick_duration_ms,
+            food,
+        }) = from_server_rx.recv()
+        else {
+            eprintln!("Failed to receive OnJoin message from server");
+            continue;
+        };
+
+        let mut room_state = RoomState::new(my_id, snakes, tick_duration_ms, food);
         let mut death_time: Option<Instant> = None;
 
         loop {
@@ -62,7 +73,7 @@ async fn main() {
             }
 
             // Drawing
-            if !room_state.alive && room_state.my_id.is_some() {
+            if !room_state.alive {
                 draw::draw_game_finished();
                 match death_time {
                     None => {
@@ -85,20 +96,15 @@ async fn main() {
 
             let elapsed = room_state.last_update_time.elapsed().as_millis();
 
-            let mut t = 1.0; // TODO: xddd
-            if let Some(tick_duration_ms) = room_state.tick_duration_ms {
-                t = (elapsed as f32 / tick_duration_ms as f32).min(1.0);
-            }
+            let interpol_t = (elapsed as f32 / room_state.tick_duration_ms as f32).min(1.0);
 
-            if let Some(snake) = &room_state.my_snake {
-                draw::draw_snake(
-                    &snake.segments,
-                    room_state.prev_my_snake.as_ref(),
-                    t,
-                    true,
-                    room_state.ghosts.contains(&room_state.my_id.unwrap()),
-                );
-            }
+            draw::draw_snake(
+                &room_state.my_snake.segments,
+                room_state.prev_my_snake.as_ref(),
+                interpol_t,
+                true,
+                room_state.ghosts.contains(&room_state.my_id),
+            );
 
             for (id, snake) in room_state.other_snakes.iter() {
                 let prev_segments = room_state.prev_other_snakes.get(id);
@@ -106,14 +112,12 @@ async fn main() {
                 draw::draw_snake(
                     &snake.segments,
                     prev_segments,
-                    t,
+                    interpol_t,
                     false,
                     room_state.ghosts.contains(id),
                 );
             }
-            if let Some(food_pos) = room_state.food {
-                draw::draw_food(Some(food_pos));
-            }
+            draw::draw_food(room_state.food);
 
             next_frame().await;
         }
