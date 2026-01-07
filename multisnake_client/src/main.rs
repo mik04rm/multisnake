@@ -3,6 +3,7 @@ mod room_connection;
 mod room_state;
 mod tui;
 
+use clap::Parser;
 use macroquad::prelude::*;
 use multisnake_shared::SnakeMessage;
 use room_state::RoomState;
@@ -10,12 +11,20 @@ use std::time::{Duration, Instant};
 
 const BACK_TUI_DELAY_MS: u64 = 5000;
 
+#[derive(Parser)]
+struct Args {
+    #[arg(default_value = "127.0.0.1:8080")]
+    server_addr: String,
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
+    let args = Args::parse();
+
     loop {
         let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
 
-        let maybe_selected_room = tokio_runtime.block_on(async { tui::run_room_selector().await });
+        let maybe_selected_room = tokio_runtime.block_on(async { tui::run_room_selector(&args.server_addr).await });
 
         let selected_room = match maybe_selected_room {
             Ok(Some(room)) => room,
@@ -34,9 +43,11 @@ async fn main() {
             tokio::sync::mpsc::unbounded_channel::<SnakeMessage>();
         let (from_server_tx, from_server_rx) = std::sync::mpsc::channel();
 
+        let server_addr = args.server_addr.clone();
+
         tokio_runtime.spawn(async move {
             room_connection::run(
-                format!("ws://127.0.0.1:8080/room/{}", selected_room),
+                format!("ws://{}/room/{}", server_addr, selected_room),
                 from_client_rx,
                 from_server_tx,
             )

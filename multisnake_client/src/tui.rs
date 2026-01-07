@@ -16,14 +16,14 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use multisnake_shared::{LobbyUpdate, N_ROOMS};
 
-pub async fn run_room_selector() -> Result<Option<u32>, Box<dyn Error>> {
+pub async fn run_room_selector(server_addr: &str) -> Result<Option<u32>, Box<dyn Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run_app(&mut terminal).await;
+    let result = run_app(&mut terminal, server_addr).await;
 
     disable_raw_mode()?;
     execute!(
@@ -36,14 +36,14 @@ pub async fn run_room_selector() -> Result<Option<u32>, Box<dyn Error>> {
     result
 }
 
-async fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<u32>, Box<dyn Error>> {
+async fn run_app<B: Backend>(terminal: &mut Terminal<B>, server_addr: &str) -> Result<Option<u32>, Box<dyn Error>> {
     let mut rooms_count = [0; N_ROOMS as usize]; // TODO
     let mut list_state = ListState::default();
     list_state.select(Some(0));
 
     let mut event_stream = EventStream::new();
 
-    let url = "ws://127.0.0.1:8080/room";
+    let url = format!("ws://{}/room", server_addr);
 
     let (ws_stream, _) = connect_async(url).await?;
     let (_, mut ws_rx) = ws_stream.split();
